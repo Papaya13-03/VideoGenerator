@@ -31,6 +31,8 @@ dependencies = [
     "socksio==1.0.0",
     "pydub==0.25.1",
     "litellm==1.86.2",
+    "arq==0.26.3",
+    "boto3==1.35.99",
 ]
 
 [project.optional-dependencies]

@@ -59,7 +59,7 @@ class MaterialInfo:
     provider: str = "pexels"
     url: str = ""
     duration: int = 0
-    # "video" | "image" — giữ kiểu str (không dùng Enum) để utils.to_json() serialize được như cũ.
+    # "video" | "image" — kept as str (not Enum) so utils.to_json() serializes it as before.
     type: str = MaterialType.video.value
 
 
@@ -92,14 +92,14 @@ class VideoParams(BaseModel):
         None  # Materials used to generate the video
     )
 
-    # --- Beat-sync / music-montage (mới) ---
-    # Loại media lấy theo keyword: ["video"], ["image"], hoặc cả hai.
+    # --- Beat-sync / music-montage ---
+    # Media types to fetch by keyword: ["video"], ["image"], or both.
     material_types: Optional[List[str]] = Field(default_factory=lambda: ["video"])
     beat_sync_enabled: Optional[bool] = False
     beats_per_segment: Optional[int] = Field(default=4, ge=1, le=16)
-    music_file: Optional[str] = None  # File nhạc làm trục thời gian beat-sync
-    image_clip_duration: Optional[int] = 4  # Thời lượng giữ ảnh khi convert sang clip
-    voiceover_enabled: Optional[bool] = True  # Tắt để làm montage chỉ nhạc, không lời
+    music_file: Optional[str] = None  # Music track used as the beat-sync timeline
+    image_clip_duration: Optional[int] = 4  # Hold duration when converting an image to a clip
+    voiceover_enabled: Optional[bool] = True  # Disable for a music-only montage (no narration)
 
     custom_audio_file: Optional[str] = None  # Custom audio file path, will ignore video_script and disable subtitle
     video_language: Optional[str] = ""  # auto detect

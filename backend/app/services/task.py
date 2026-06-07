@@ -88,7 +88,7 @@ def generate_audio(task_id, params, video_script):
     # 这里统一做兼容读取，避免直调接口时抛属性错误。
     custom_audio_file = getattr(params, "custom_audio_file", None)
 
-    # Montage chỉ nhạc (voiceover_enabled=False): bỏ TTS, lấy độ dài từ nhạc.
+    # Music-only montage (voiceover_enabled=False): skip TTS, derive duration from the music.
     if not getattr(params, "voiceover_enabled", True) and not custom_audio_file:
         from app.services import video as video_svc
 
@@ -105,7 +105,7 @@ def generate_audio(task_id, params, video_script):
                 "voiceover disabled but no music/bgm available to derive duration."
             )
             return None, None, None
-        # Đồng bộ file nhạc đã resolve để combine + generate_video dùng đúng 1 file.
+        # Sync the resolved music file so combine + generate_video use the same one.
         params.music_file = music
         audio_duration = math.ceil(voice.get_audio_duration(music))
         if audio_duration == 0:
@@ -210,8 +210,8 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             getattr(params.video_concat_mode, "value", params.video_concat_mode)
             == VideoConcatMode.beat_sync.value
         )
-        # Dùng download_materials (hỗn hợp ảnh+video) khi cần ảnh hoặc beat-sync;
-        # ngược lại giữ download_videos cũ cho luồng video-only.
+        # Use download_materials (mixed image+video) when images or beat-sync are needed;
+        # otherwise keep the original download_videos for the video-only path.
         if beat_sync or "image" in material_types:
             logger.info(
                 f"\n\n## downloading materials ({material_types}) from {params.video_source}"
@@ -257,7 +257,7 @@ def generate_final_videos(
     )
     video_transition_mode = params.video_transition_mode
 
-    # Beat-sync khi bật cờ hoặc chọn concat mode beat_sync.
+    # Beat-sync when the flag is set or the beat_sync concat mode is selected.
     beat_sync = getattr(params, "beat_sync_enabled", False) or (
         getattr(video_concat_mode, "value", video_concat_mode)
         == VideoConcatMode.beat_sync.value

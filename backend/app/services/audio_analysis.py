@@ -1,8 +1,8 @@
-"""Beat detection + segment boundaries cho chế độ beat-sync.
+"""Beat detection + segment boundaries for beat-sync mode.
 
-`librosa` là dependency nặng (numpy/scipy/numba) nên để ở optional extra `beatsync`
-và chỉ import khi cần (lazy). Caller phải xử lý `BeatDetectionUnavailable` /
-`BeatDetectionError` bằng cách fallback sang cắt theo khoảng cố định.
+`librosa` is a heavy dependency (numpy/scipy/numba), so it lives in the optional
+`beatsync` extra and is imported lazily. Callers must handle
+`BeatDetectionUnavailable` / `BeatDetectionError` by falling back to fixed-interval cuts.
 """
 
 import math
@@ -12,35 +12,35 @@ from loguru import logger
 
 
 class BeatDetectionUnavailable(RuntimeError):
-    """Thiếu thư viện librosa (chưa cài extra `beatsync`)."""
+    """librosa is missing (the `beatsync` extra is not installed)."""
 
 
 class BeatDetectionError(RuntimeError):
-    """Phát hiện beat thất bại (file lỗi, không đủ beat...)."""
+    """Beat detection failed (bad file, not enough beats, ...)."""
 
 
 def _import_librosa():
     try:
-        import librosa  # noqa: WPS433 (lazy import có chủ đích)
+        import librosa  # lazy import on purpose
 
         return librosa
-    except ImportError as e:  # pragma: no cover - phụ thuộc môi trường
+    except ImportError as e:  # pragma: no cover - environment dependent
         raise BeatDetectionUnavailable(
-            "Beat-sync cần extra 'beatsync': cài bằng `uv pip install '.[beatsync]'` "
-            "(hoặc `pip install librosa soundfile`)."
+            "Beat-sync needs the 'beatsync' extra: install with "
+            "`uv pip install '.[beatsync]'` (or `pip install librosa soundfile`)."
         ) from e
 
 
 def detect_beats(audio_file: str) -> Tuple[float, List[float]]:
-    """Trả về (tempo_bpm, beat_times_seconds).
+    """Return (tempo_bpm, beat_times_seconds).
 
-    Raises BeatDetectionUnavailable nếu thiếu librosa, BeatDetectionError nếu phân tích lỗi.
+    Raises BeatDetectionUnavailable if librosa is missing, BeatDetectionError on failure.
     """
     librosa = _import_librosa()
     try:
         y, sr = librosa.load(audio_file, sr=None, mono=True)
-        # Tính onset envelope tường minh rồi truyền vào beat_track — ổn định hơn nhiều
-        # so với để beat_track tự suy ra (nhất là tín hiệu sparse/percussive).
+        # Compute the onset envelope explicitly and pass it to beat_track — far more
+        # reliable than letting beat_track infer it (especially for sparse/percussive audio).
         onset_env = librosa.onset.onset_strength(y=y, sr=sr)
         tempo, beat_frames = librosa.beat.beat_track(
             onset_envelope=onset_env, sr=sr, units="frames"
@@ -50,13 +50,13 @@ def detect_beats(audio_file: str) -> Tuple[float, List[float]]:
         beats = [float(t) for t in beat_times]
         if len(beats) < 2:
             raise BeatDetectionError(
-                f"không đủ beat phát hiện được ({len(beats)}) trong {audio_file}"
+                f"too few beats detected ({len(beats)}) in {audio_file}"
             )
         return tempo_val, beats
     except BeatDetectionError:
         raise
     except Exception as e:
-        raise BeatDetectionError(f"phân tích beat thất bại cho {audio_file}: {e}") from e
+        raise BeatDetectionError(f"beat analysis failed for {audio_file}: {e}") from e
 
 
 def compute_segment_boundaries(
@@ -66,15 +66,16 @@ def compute_segment_boundaries(
     min_segment: float = 0.4,
     max_segment: float = 8.0,
 ) -> List[Tuple[float, float]]:
-    """Gom beat thành các mốc cắt; trả về [(start, end), ...] phủ kín [0, total_duration].
+    """Group beats into cut points; return [(start, end), ...] covering [0, total_duration].
 
-    - Lấy mỗi `beats_per_segment` beat làm 1 mốc cắt.
-    - Gộp segment ngắn hơn `min_segment` vào segment trước (chống BPM cao / double-tempo).
-    - Chẻ đôi segment dài hơn `max_segment` (chống nhạc ambient ít beat).
+    - Take every `beats_per_segment`-th beat as a cut point.
+    - Merge any segment shorter than `min_segment` into the previous one
+      (guards against high BPM / doubled tempo).
+    - Split any segment longer than `max_segment` (guards against ambient music with few beats).
     """
     beats_per_segment = max(1, int(beats_per_segment))
 
-    # Lấy các mốc cắt thô từ beat, đảm bảo bắt đầu ở 0 và kết thúc ở total_duration.
+    # Build raw cut points from beats, anchored at 0 and total_duration.
     cut_points = [0.0]
     for i in range(0, len(beat_times), beats_per_segment):
         t = beat_times[i]
@@ -83,10 +84,10 @@ def compute_segment_boundaries(
     if cut_points[-1] < total_duration:
         cut_points.append(total_duration)
 
-    # Dựng segment thô.
+    # Build raw segments.
     raw = [(cut_points[i], cut_points[i + 1]) for i in range(len(cut_points) - 1)]
 
-    # Gộp segment quá ngắn vào segment liền trước.
+    # Merge segments that are too short into the previous one.
     merged: List[Tuple[float, float]] = []
     for start, end in raw:
         if merged and (end - start) < min_segment:
@@ -94,12 +95,12 @@ def compute_segment_boundaries(
             merged[-1] = (prev_start, end)
         else:
             merged.append((start, end))
-    # Nếu segment đầu tiên quá ngắn (không có "trước" để gộp), gộp vào segment sau.
+    # If the first segment is too short (no previous to merge into), merge it forward.
     if len(merged) >= 2 and (merged[0][1] - merged[0][0]) < min_segment:
         merged[1] = (merged[0][0], merged[1][1])
         merged.pop(0)
 
-    # Chẻ đôi segment quá dài.
+    # Split segments that are too long.
     result: List[Tuple[float, float]] = []
     for start, end in merged:
         dur = end - start
@@ -120,7 +121,7 @@ def fixed_interval_boundaries(
     total_duration: float,
     segment_seconds: float = 2.0,
 ) -> List[Tuple[float, float]]:
-    """Fallback khi không có librosa / không phát hiện được beat: cắt đều theo khoảng cố định."""
+    """Fallback when librosa is unavailable / no beats detected: even fixed-interval cuts."""
     segment_seconds = max(0.4, float(segment_seconds))
     n = max(1, int(math.ceil(total_duration / segment_seconds)))
     out = []
@@ -138,9 +139,9 @@ def get_segment_boundaries(
     beats_per_segment: int = 4,
     fallback_segment_seconds: float = 2.0,
 ) -> Tuple[List[Tuple[float, float]], bool]:
-    """Tiện ích cho assembler: trả về (segments, used_beats).
+    """Helper for the assembler: return (segments, used_beats).
 
-    Tự fallback sang cắt cố định nếu thiếu librosa hoặc phân tích beat lỗi.
+    Falls back to fixed-interval cuts if librosa is missing or beat analysis fails.
     """
     try:
         _, beat_times = detect_beats(music_file)
@@ -149,10 +150,10 @@ def get_segment_boundaries(
         )
         if segments:
             return segments, True
-        logger.warning("beat detection trả về 0 segment, fallback sang cắt cố định")
+        logger.warning("beat detection returned 0 segments, falling back to fixed interval")
     except BeatDetectionUnavailable as e:
-        logger.warning(f"{e} -> fallback sang cắt cố định")
+        logger.warning(f"{e} -> falling back to fixed interval")
     except BeatDetectionError as e:
-        logger.warning(f"{e} -> fallback sang cắt cố định")
+        logger.warning(f"{e} -> falling back to fixed interval")
 
     return fixed_interval_boundaries(total_duration, fallback_segment_seconds), False

@@ -172,7 +172,7 @@ def search_images_pexels(
     video_aspect: VideoAspect = VideoAspect.portrait,
 ) -> List[MaterialInfo]:
     aspect = VideoAspect(video_aspect)
-    # Pexels photo API nhận orientation: landscape | portrait | square — trùng aspect.name.
+    # Pexels photo API accepts orientation: landscape | portrait | square — matches aspect.name.
     video_orientation = aspect.name
     video_width, video_height = aspect.to_resolution()
     api_key = get_api_key("pexels_api_keys")
@@ -200,7 +200,7 @@ def search_images_pexels(
         for photo in response["photos"]:
             w = int(photo.get("width", 0))
             h = int(photo.get("height", 0))
-            # Loại ảnh quá nhỏ để tránh upscale vỡ nét (sàn 480x480 như preprocess_video).
+            # Skip images that are too small to avoid blurry upscaling (480x480 floor, like preprocess_video).
             if w < 480 or h < 480:
                 continue
             src = photo.get("src", {})
@@ -226,7 +226,7 @@ def search_images_pixabay(
 ) -> List[MaterialInfo]:
     aspect = VideoAspect(video_aspect)
     video_width, video_height = aspect.to_resolution()
-    # Pixabay nhận orientation: all | horizontal | vertical.
+    # Pixabay accepts orientation: all | horizontal | vertical.
     orientation_map = {
         VideoAspect.landscape.name: "horizontal",
         VideoAspect.portrait.name: "vertical",
@@ -371,7 +371,7 @@ def save_image(image_url: str, save_dir: str = "") -> str:
 
     if os.path.exists(image_path) and os.path.getsize(image_path) > 0:
         try:
-            # Validate bằng Pillow (đã có sẵn trong deps), tránh phụ thuộc moviepy ở material.py.
+            # Validate with Pillow (already a dependency) to avoid coupling material.py to moviepy.
             with Image.open(image_path) as im:
                 im.verify()
             return image_path
@@ -466,10 +466,10 @@ def download_materials(
     image_clip_duration: int = 4,
     convert_images_to_clips: bool = True,
 ) -> List[str]:
-    """Tìm + tải hỗn hợp VIDEO và ẢNH theo keyword, trả về list đường dẫn local sẵn sàng.
+    """Search + download a mix of VIDEOS and IMAGES by keyword; return ready-to-use local paths.
 
-    Khi convert_images_to_clips=True, ảnh được chuyển sang clip .mp4 (Ken-Burns zoom)
-    nên caller chỉ thấy một danh sách .mp4 đồng nhất.
+    When convert_images_to_clips=True, images are turned into .mp4 clips (Ken-Burns zoom)
+    so the caller sees a uniform list of .mp4 files.
     """
     material_types = [t for t in material_types] or ["video"]
     search_video = search_videos_pixabay if source == "pixabay" else search_videos_pexels
@@ -521,7 +521,7 @@ def download_materials(
                 logger.info(f"downloading image: {item.url}")
                 saved_path = save_image(image_url=item.url, save_dir=material_directory)
                 if saved_path and convert_images_to_clips:
-                    # Lazy import để tránh vòng lặp import (video.py không import material.py).
+                    # Lazy import to avoid a circular import (video.py does not import material.py).
                     from app.services.video import image_to_clip_file
 
                     saved_path = image_to_clip_file(

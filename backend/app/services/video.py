@@ -699,7 +699,7 @@ def combine_videos(
 
 
 def _resize_clip_to_canvas(clip, video_width: int, video_height: int):
-    """Resize/letterbox 1 clip về đúng khung video_width x video_height (logic từ combine_videos)."""
+    """Resize/letterbox a clip to exactly video_width x video_height (logic from combine_videos)."""
     clip_w, clip_h = clip.size
     if clip_w == video_width and clip_h == video_height:
         return clip
@@ -721,7 +721,7 @@ def _resize_clip_to_canvas(clip, video_width: int, video_height: int):
 
 
 def _apply_transition(clip, transition_value, duration: float, shuffle_side: str = None):
-    """Áp transition cho clip với độ dài `duration` (logic từ combine_videos)."""
+    """Apply a transition to the clip with length `duration` (logic from combine_videos)."""
     if transition_value in (None, VideoTransitionMode.none.value):
         return clip
     if shuffle_side is None:
@@ -755,17 +755,17 @@ def combine_videos_beatsync(
     beats_per_segment: int = 4,
     threads: int = 2,
 ) -> str:
-    """Ghép các material (.mp4) đồng bộ theo nhịp của `music_file`.
+    """Assemble materials (.mp4) in sync with the beats of `music_file`.
 
-    Mỗi segment (ranh giới = beat) được cắt/loop cho khớp đúng độ dài, nên các điểm
-    chuyển cảnh rơi đúng vào beat. Nhạc là trục thời gian; `audio_file` (voiceover)
-    chỉ dùng để nới tổng thời lượng nếu dài hơn nhạc.
+    Each segment (boundary = beat) is cut/looped to match its length exactly, so the
+    cut points land on beats. Music is the timeline; `audio_file` (voiceover) is only
+    used to extend the total duration if it is longer than the music.
     """
     if not material_paths:
         logger.warning("no materials for beat-sync combine")
         return combined_video_path
 
-    # 1. Tổng thời lượng = max(nhạc, voiceover nếu có).
+    # 1. Total duration = max(music, voiceover if present).
     music_clip = AudioFileClip(music_file)
     try:
         total_duration = music_clip.duration
@@ -778,7 +778,7 @@ def combine_videos_beatsync(
         finally:
             close_clip(vo)
 
-    # 2. Ranh giới segment theo beat (tự fallback cắt cố định nếu không có librosa).
+    # 2. Segment boundaries from beats (auto fallback to fixed interval if librosa is missing).
     segments, used_beats = audio_analysis.get_segment_boundaries(
         music_file, total_duration, beats_per_segment=beats_per_segment
     )
@@ -802,7 +802,7 @@ def combine_videos_beatsync(
         try:
             clip = _open_video_clip_quietly(src)
             src_dur = clip.duration
-            # Khớp clip với độ dài segment: dài hơn -> cắt; ngắn hơn -> loop.
+            # Fit the clip to the segment length: longer -> cut; shorter -> loop.
             if src_dur >= seg_dur:
                 clip = clip.subclipped(0, seg_dur)
             else:
@@ -810,7 +810,7 @@ def combine_videos_beatsync(
 
             clip = _resize_clip_to_canvas(clip, video_width, video_height)
 
-            # Transition rơi đúng beat: clamp độ dài để không vượt nửa segment.
+            # Transition lands on the beat: clamp its length so it never exceeds half the segment.
             if transition_value not in (None, VideoTransitionMode.none.value):
                 clip = _apply_transition(
                     clip, transition_value, min(1.0, seg_dur / 2)
@@ -1108,8 +1108,8 @@ def generate_video(
             text_clips.append(clip)
         video_clip = CompositeVideoClip([video_clip, *text_clips])
 
-    # --- Lớp âm thanh: voiceover (tùy chọn) + nhạc/BGM ---
-    # voiceover_enabled=False => montage chỉ nhạc, không lời.
+    # --- Audio layers: voiceover (optional) + music/BGM ---
+    # voiceover_enabled=False => music-only montage (no narration).
     voiceover_enabled = getattr(params, "voiceover_enabled", True)
     audio_layers = []
     if voiceover_enabled and audio_path and os.path.exists(audio_path):
@@ -1119,17 +1119,17 @@ def generate_video(
             )
         )
 
-    # Nhạc trục: ưu tiên params.music_file, fallback bgm_type/bgm_file như cũ.
+    # Music timeline: prefer params.music_file, fall back to bgm_type/bgm_file as before.
     music_file = ""
     if getattr(params, "music_file", None):
-        # bgm_type truthy để vượt qua early-return trong get_bgm_file và đi vào nhánh bgm_file.
+        # bgm_type truthy to bypass the early-return in get_bgm_file and hit the bgm_file branch.
         music_file = get_bgm_file(bgm_type="file", bgm_file=params.music_file)
     if not music_file:
         music_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
 
     if music_file:
         try:
-            # Không có voiceover => nhạc là âm thanh chính, để nguyên âm lượng (1.0).
+            # No voiceover => music is the main audio, keep it at full volume (1.0).
             music_volume = params.bgm_volume if audio_layers else 1.0
             bgm_clip = AudioFileClip(music_file).with_effects(
                 [
@@ -1176,10 +1176,10 @@ def image_to_clip_file(
     video_aspect: VideoAspect = VideoAspect.portrait,
     zoom: bool = True,
 ) -> str:
-    """Chuyển 1 ảnh tĩnh thành clip .mp4 với hiệu ứng Ken-Burns zoom.
+    """Convert a still image into an .mp4 clip with a Ken-Burns zoom effect.
 
-    Trả về đường dẫn `{image_path}.mp4`, hoặc "" nếu ảnh lỗi / độ phân giải thấp.
-    Dùng chung bởi preprocess_video (ảnh local) và material.download_materials (ảnh tải về).
+    Returns the path `{image_path}.mp4`, or "" if the image is invalid / too low-res.
+    Shared by preprocess_video (local images) and material.download_materials (downloaded images).
     """
     try:
         probe_clip, image_path = _open_image_clip_with_fallback(image_path)
@@ -1203,7 +1203,7 @@ def image_to_clip_file(
         base_clip = (
             ImageClip(image_path).with_duration(clip_duration).with_position("center")
         )
-        # Zoom động: từ 100% lên dần (t/clip_duration đi 0→1 trong suốt clip).
+        # Dynamic zoom: scales up from 100% (t/clip_duration goes 0->1 over the clip).
         out_clip = (
             base_clip.resized(lambda t: 1 + (clip_duration * 0.03) * (t / clip_duration))
             if zoom

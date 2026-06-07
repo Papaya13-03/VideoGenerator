@@ -147,7 +147,16 @@ def create_task(
             "params": body.model_dump(),
         }
         sm.state.update_task(task_id)
-        task_manager.add_task(tm.start, task_id=task_id, params=body, stop_at=stop_at)
+        # When use_arq is on, dispatch to a durable Redis-backed worker queue
+        # (multi-instance safe). Otherwise fall back to the in-process thread manager.
+        if config.app.get("use_arq", False):
+            from app.queue.client import enqueue_render
+
+            enqueue_render(task_id, body.model_dump(), stop_at)
+        else:
+            task_manager.add_task(
+                tm.start, task_id=task_id, params=body, stop_at=stop_at
+            )
         logger.success(f"Task created: {utils.to_json(task)}")
         return utils.get_response(200, task)
     except TaskQueueFullError as e:

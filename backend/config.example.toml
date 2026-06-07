@@ -271,6 +271,20 @@ max_concurrent_tasks = 5
 max_queued_tasks = 100
 
 
+[storage]
+# Where outputs are stored (final video, combined, audio...).
+# backend = "local" (local disk, dev) or "s3" (MinIO / Cloudflare R2 / AWS S3).
+backend = "local"
+# When backend = "s3":
+s3_endpoint_url = ""      # MinIO/R2: http://minio:9000 ; AWS: leave empty
+s3_bucket = "videogenerator"
+s3_access_key = ""
+s3_secret_key = ""
+s3_region = "us-east-1"
+# Public URL (e.g. CDN/R2 public). If empty, use presigned URL (s3) / file path (local).
+public_base_url = ""
+
+
 [whisper]
 # Only effective when subtitle_provider is "whisper"
 

@@ -162,6 +162,7 @@ whisper = _cfg.get("whisper", {})
 proxy = _cfg.get("proxy", {})
 azure = _cfg.get("azure", {})
 siliconflow = _cfg.get("siliconflow", {})
+storage = _cfg.get("storage", {})
 ui = _cfg.get(
     "ui",
     {
@@ -187,6 +188,35 @@ app["redis_host"] = os.getenv(
     "MPT_APP_REDIS_HOST",
     os.getenv("REDIS_HOST", app.get("redis_host", "localhost")),
 )
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
+
+# Env overrides so docker-compose can drive queue/state/storage without editing config.toml.
+app["enable_redis"] = _env_bool("MPT_APP_ENABLE_REDIS", app.get("enable_redis", False))
+app["use_arq"] = _env_bool("MPT_APP_USE_ARQ", app.get("use_arq", False))
+if os.getenv("MPT_APP_REDIS_PORT"):
+    app["redis_port"] = int(os.getenv("MPT_APP_REDIS_PORT"))
+if os.getenv("MPT_APP_REDIS_PASSWORD") is not None:
+    app["redis_password"] = os.getenv("MPT_APP_REDIS_PASSWORD")
+
+if os.getenv("MPT_STORAGE_BACKEND"):
+    storage["backend"] = os.getenv("MPT_STORAGE_BACKEND")
+for _env_key, _cfg_key in (
+    ("MPT_STORAGE_S3_ENDPOINT_URL", "s3_endpoint_url"),
+    ("MPT_STORAGE_S3_BUCKET", "s3_bucket"),
+    ("MPT_STORAGE_S3_ACCESS_KEY", "s3_access_key"),
+    ("MPT_STORAGE_S3_SECRET_KEY", "s3_secret_key"),
+    ("MPT_STORAGE_S3_REGION", "s3_region"),
+    ("MPT_STORAGE_PUBLIC_BASE_URL", "public_base_url"),
+):
+    if os.getenv(_env_key):
+        storage[_cfg_key] = os.getenv(_env_key)
 
 imagemagick_path = app.get("imagemagick_path", "")
 if imagemagick_path and os.path.isfile(imagemagick_path):
