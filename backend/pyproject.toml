@@ -33,14 +33,20 @@ dependencies = [
     "litellm==1.86.2",
     "arq==0.26.3",
     "boto3==1.35.99",
+    "sqlalchemy==2.0.36",
+    "alembic==1.14.0",
+    "psycopg2-binary==2.9.10",
+    "pyjwt==2.10.1",
+    "bcrypt==4.2.1",
+    "email-validator==2.2.0",
 ]
 
 [project.optional-dependencies]
 g4f = [
     "g4f==0.5.2.2",
 ]
-# Beat-sync (phát hiện nhịp nhạc). Nặng (numpy/scipy/numba) nên để optional,
-# cài bằng: uv pip install '.[beatsync]'
+# Beat-sync (music beat detection). Heavy (numpy/scipy/numba), kept optional;
+# install with: uv pip install '.[beatsync]'
 beatsync = [
     "librosa==0.10.2",
     "soundfile>=0.12.1",

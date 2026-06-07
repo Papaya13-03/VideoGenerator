@@ -80,3 +80,10 @@ def shutdown_event():
 @app.on_event("startup")
 def startup_event():
     logger.info("startup event")
+    # Ensure DB tables exist (dev convenience; production also runs Alembic migrations).
+    try:
+        from app.db.session import init_db
+
+        init_db()
+    except Exception as e:
+        logger.error(f"db init failed: {e}")
