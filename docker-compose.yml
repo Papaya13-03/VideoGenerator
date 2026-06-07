@@ -72,6 +72,20 @@ services:
     command: ["arq", "app.queue.worker.WorkerSettings"]
     restart: always
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vg-frontend
+    # Browser-side calls go to the host-published API port.
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8080/api/v1
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+    restart: always
+
 volumes:
   minio-data:
   pg-data:
