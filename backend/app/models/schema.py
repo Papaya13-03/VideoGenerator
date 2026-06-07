@@ -18,6 +18,12 @@ warnings.filterwarnings(
 class VideoConcatMode(str, Enum):
     random = "random"
     sequential = "sequential"
+    beat_sync = "beat_sync"
+
+
+class MaterialType(str, Enum):
+    video = "video"
+    image = "image"
 
 
 class VideoTransitionMode(str, Enum):
@@ -53,6 +59,8 @@ class MaterialInfo:
     provider: str = "pexels"
     url: str = ""
     duration: int = 0
+    # "video" | "image" — giữ kiểu str (không dùng Enum) để utils.to_json() serialize được như cũ.
+    type: str = MaterialType.video.value
 
 
 class VideoParams(BaseModel):
@@ -83,7 +91,16 @@ class VideoParams(BaseModel):
     video_materials: Optional[List[MaterialInfo]] = (
         None  # Materials used to generate the video
     )
-    
+
+    # --- Beat-sync / music-montage (mới) ---
+    # Loại media lấy theo keyword: ["video"], ["image"], hoặc cả hai.
+    material_types: Optional[List[str]] = Field(default_factory=lambda: ["video"])
+    beat_sync_enabled: Optional[bool] = False
+    beats_per_segment: Optional[int] = Field(default=4, ge=1, le=16)
+    music_file: Optional[str] = None  # File nhạc làm trục thời gian beat-sync
+    image_clip_duration: Optional[int] = 4  # Thời lượng giữ ảnh khi convert sang clip
+    voiceover_enabled: Optional[bool] = True  # Tắt để làm montage chỉ nhạc, không lời
+
     custom_audio_file: Optional[str] = None  # Custom audio file path, will ignore video_script and disable subtitle
     video_language: Optional[str] = ""  # auto detect
 

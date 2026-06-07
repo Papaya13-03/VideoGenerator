@@ -87,6 +87,34 @@ def generate_audio(task_id, params, video_script):
     # /audio 和 /subtitle 请求模型不包含 custom_audio_file，
     # 这里统一做兼容读取，避免直调接口时抛属性错误。
     custom_audio_file = getattr(params, "custom_audio_file", None)
+
+    # Montage chỉ nhạc (voiceover_enabled=False): bỏ TTS, lấy độ dài từ nhạc.
+    if not getattr(params, "voiceover_enabled", True) and not custom_audio_file:
+        from app.services import video as video_svc
+
+        music = ""
+        if getattr(params, "music_file", None):
+            music = video_svc.get_bgm_file(bgm_type="file", bgm_file=params.music_file)
+        if not music:
+            music = video_svc.get_bgm_file(
+                bgm_type=params.bgm_type, bgm_file=params.bgm_file
+            )
+        if not music:
+            sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+            logger.error(
+                "voiceover disabled but no music/bgm available to derive duration."
+            )
+            return None, None, None
+        # Đồng bộ file nhạc đã resolve để combine + generate_video dùng đúng 1 file.
+        params.music_file = music
+        audio_duration = math.ceil(voice.get_audio_duration(music))
+        if audio_duration == 0:
+            sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+            logger.error("failed to get music duration.")
+            return None, None, None
+        logger.info(f"music-only montage: duration from music = {audio_duration}s")
+        return music, audio_duration, None
+
     if not custom_audio_file or not os.path.exists(custom_audio_file):
         if custom_audio_file:
             logger.warning(
@@ -177,20 +205,43 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             return None
         return [material_info.url for material_info in materials]
     else:
-        logger.info(f"\n\n## downloading videos from {params.video_source}")
-        downloaded_videos = material.download_videos(
-            task_id=task_id,
-            search_terms=video_terms,
-            source=params.video_source,
-            video_aspect=params.video_aspect,
-            video_contact_mode=params.video_concat_mode,
-            audio_duration=audio_duration * params.video_count,
-            max_clip_duration=params.video_clip_duration,
+        material_types = getattr(params, "material_types", None) or ["video"]
+        beat_sync = getattr(params, "beat_sync_enabled", False) or (
+            getattr(params.video_concat_mode, "value", params.video_concat_mode)
+            == VideoConcatMode.beat_sync.value
         )
+        # Dùng download_materials (hỗn hợp ảnh+video) khi cần ảnh hoặc beat-sync;
+        # ngược lại giữ download_videos cũ cho luồng video-only.
+        if beat_sync or "image" in material_types:
+            logger.info(
+                f"\n\n## downloading materials ({material_types}) from {params.video_source}"
+            )
+            downloaded_videos = material.download_materials(
+                task_id=task_id,
+                search_terms=video_terms,
+                source=params.video_source,
+                material_types=material_types,
+                video_aspect=params.video_aspect,
+                video_contact_mode=params.video_concat_mode,
+                audio_duration=audio_duration * params.video_count,
+                max_clip_duration=params.video_clip_duration,
+                image_clip_duration=getattr(params, "image_clip_duration", 4),
+            )
+        else:
+            logger.info(f"\n\n## downloading videos from {params.video_source}")
+            downloaded_videos = material.download_videos(
+                task_id=task_id,
+                search_terms=video_terms,
+                source=params.video_source,
+                video_aspect=params.video_aspect,
+                video_contact_mode=params.video_concat_mode,
+                audio_duration=audio_duration * params.video_count,
+                max_clip_duration=params.video_clip_duration,
+            )
         if not downloaded_videos:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
             logger.error(
-                "failed to download videos, maybe the network is not available. if you are in China, please use a VPN."
+                "failed to download materials, maybe the network is not available. if you are in China, please use a VPN."
             )
             return None
         return downloaded_videos
@@ -206,6 +257,26 @@ def generate_final_videos(
     )
     video_transition_mode = params.video_transition_mode
 
+    # Beat-sync khi bật cờ hoặc chọn concat mode beat_sync.
+    beat_sync = getattr(params, "beat_sync_enabled", False) or (
+        getattr(video_concat_mode, "value", video_concat_mode)
+        == VideoConcatMode.beat_sync.value
+    )
+    music_file = ""
+    if beat_sync:
+        if getattr(params, "music_file", None):
+            music_file = video.get_bgm_file(bgm_type="file", bgm_file=params.music_file)
+        if not music_file:
+            music_file = video.get_bgm_file(
+                bgm_type=params.bgm_type, bgm_file=params.bgm_file
+            )
+        if not music_file:
+            logger.warning(
+                "beat-sync requested but no music/bgm found; falling back to normal combine."
+            )
+            beat_sync = False
+    voiceover_enabled = getattr(params, "voiceover_enabled", True)
+
     _progress = 50
     for i in range(params.video_count):
         index = i + 1
@@ -213,16 +284,28 @@ def generate_final_videos(
             utils.task_dir(task_id), f"combined-{index}.mp4"
         )
         logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
-        video.combine_videos(
-            combined_video_path=combined_video_path,
-            video_paths=downloaded_videos,
-            audio_file=audio_file,
-            video_aspect=params.video_aspect,
-            video_concat_mode=video_concat_mode,
-            video_transition_mode=video_transition_mode,
-            max_clip_duration=params.video_clip_duration,
-            threads=params.n_threads,
-        )
+        if beat_sync:
+            video.combine_videos_beatsync(
+                combined_video_path=combined_video_path,
+                material_paths=downloaded_videos,
+                music_file=music_file,
+                audio_file=audio_file if voiceover_enabled else None,
+                video_aspect=params.video_aspect,
+                video_transition_mode=video_transition_mode,
+                beats_per_segment=getattr(params, "beats_per_segment", 4),
+                threads=params.n_threads,
+            )
+        else:
+            video.combine_videos(
+                combined_video_path=combined_video_path,
+                video_paths=downloaded_videos,
+                audio_file=audio_file,
+                video_aspect=params.video_aspect,
+                video_concat_mode=video_concat_mode,
+                video_transition_mode=video_transition_mode,
+                max_clip_duration=params.video_clip_duration,
+                threads=params.n_threads,
+            )
 
         _progress += 50 / params.video_count / 2
         sm.state.update_task(task_id, progress=_progress)

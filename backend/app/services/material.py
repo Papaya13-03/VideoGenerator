@@ -7,9 +7,11 @@ from urllib.parse import urlencode
 import requests
 from loguru import logger
 from moviepy.video.io.VideoFileClip import VideoFileClip
+from PIL import Image
 
 from app.config import config
-from app.models.schema import MaterialInfo, VideoAspect, VideoConcatMode
+from app.models import const
+from app.models.schema import MaterialInfo, MaterialType, VideoAspect, VideoConcatMode
 from app.utils import utils
 
 # Thread-safe counter for API key rotation
@@ -165,6 +167,114 @@ def search_videos_pixabay(
     return []
 
 
+def search_images_pexels(
+    search_term: str,
+    video_aspect: VideoAspect = VideoAspect.portrait,
+) -> List[MaterialInfo]:
+    aspect = VideoAspect(video_aspect)
+    # Pexels photo API nhận orientation: landscape | portrait | square — trùng aspect.name.
+    video_orientation = aspect.name
+    video_width, video_height = aspect.to_resolution()
+    api_key = get_api_key("pexels_api_keys")
+    headers = {
+        "Authorization": api_key,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    }
+    params = {"query": search_term, "per_page": 30, "orientation": video_orientation}
+    query_url = f"https://api.pexels.com/v1/search?{urlencode(params)}"
+    logger.info(f"searching images: {query_url}, with proxies: {config.proxy}")
+
+    try:
+        r = requests.get(
+            query_url,
+            headers=headers,
+            proxies=config.proxy,
+            verify=_get_tls_verify(),
+            timeout=(30, 60),
+        )
+        response = r.json()
+        image_items = []
+        if "photos" not in response:
+            logger.error(f"search images failed: {response}")
+            return image_items
+        for photo in response["photos"]:
+            w = int(photo.get("width", 0))
+            h = int(photo.get("height", 0))
+            # Loại ảnh quá nhỏ để tránh upscale vỡ nét (sàn 480x480 như preprocess_video).
+            if w < 480 or h < 480:
+                continue
+            src = photo.get("src", {})
+            url = src.get("large2x") or src.get("original") or src.get("large")
+            if not url:
+                continue
+            item = MaterialInfo()
+            item.provider = "pexels"
+            item.type = MaterialType.image.value
+            item.url = url
+            item.duration = 0
+            image_items.append(item)
+        return image_items
+    except Exception as e:
+        logger.error(f"search images failed: {str(e)}")
+
+    return []
+
+
+def search_images_pixabay(
+    search_term: str,
+    video_aspect: VideoAspect = VideoAspect.portrait,
+) -> List[MaterialInfo]:
+    aspect = VideoAspect(video_aspect)
+    video_width, video_height = aspect.to_resolution()
+    # Pixabay nhận orientation: all | horizontal | vertical.
+    orientation_map = {
+        VideoAspect.landscape.name: "horizontal",
+        VideoAspect.portrait.name: "vertical",
+        VideoAspect.square.name: "all",
+    }
+    api_key = get_api_key("pixabay_api_keys")
+    params = {
+        "q": search_term,
+        "image_type": "photo",
+        "per_page": 50,
+        "key": api_key,
+        "orientation": orientation_map.get(aspect.name, "all"),
+        "min_width": video_width,
+        "min_height": video_height,
+    }
+    query_url = f"https://pixabay.com/api/?{urlencode(params)}"
+    logger.info(f"searching images: {query_url}, with proxies: {config.proxy}")
+
+    try:
+        r = requests.get(
+            query_url, proxies=config.proxy, verify=_get_tls_verify(), timeout=(30, 60)
+        )
+        response = r.json()
+        image_items = []
+        if "hits" not in response:
+            logger.error(f"search images failed: {response}")
+            return image_items
+        for hit in response["hits"]:
+            url = (
+                hit.get("largeImageURL")
+                or hit.get("fullHDURL")
+                or hit.get("webformatURL")
+            )
+            if not url:
+                continue
+            item = MaterialInfo()
+            item.provider = "pixabay"
+            item.type = MaterialType.image.value
+            item.url = url
+            item.duration = 0
+            image_items.append(item)
+        return image_items
+    except Exception as e:
+        logger.error(f"search images failed: {str(e)}")
+
+    return []
+
+
 def save_video(video_url: str, save_dir: str = "") -> str:
     if not save_dir:
         save_dir = utils.storage_dir("cache_videos")
@@ -222,6 +332,57 @@ def save_video(video_url: str, save_dir: str = "") -> str:
                     logger.warning(
                         f"failed to close video clip: {video_path}, error: {str(close_error)}"
                     )
+    return ""
+
+
+def save_image(image_url: str, save_dir: str = "") -> str:
+    if not save_dir:
+        save_dir = utils.storage_dir("cache_images")
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    url_without_query = image_url.split("?")[0]
+    url_hash = utils.md5(url_without_query)
+    ext = os.path.splitext(url_without_query)[1].lstrip(".").lower()
+    if ext not in const.FILE_TYPE_IMAGES:
+        ext = "jpg"
+    image_path = f"{save_dir}/img-{url_hash}.{ext}"
+
+    # if image already exists, return the path
+    if os.path.exists(image_path) and os.path.getsize(image_path) > 0:
+        logger.info(f"image already exists: {image_path}")
+        return image_path
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    }
+
+    with open(image_path, "wb") as f:
+        f.write(
+            requests.get(
+                image_url,
+                headers=headers,
+                proxies=config.proxy,
+                verify=_get_tls_verify(),
+                timeout=(60, 240),
+            ).content
+        )
+
+    if os.path.exists(image_path) and os.path.getsize(image_path) > 0:
+        try:
+            # Validate bằng Pillow (đã có sẵn trong deps), tránh phụ thuộc moviepy ở material.py.
+            with Image.open(image_path) as im:
+                im.verify()
+            return image_path
+        except Exception as e:
+            logger.warning(f"invalid image file: {image_path} => {str(e)}")
+            try:
+                os.remove(image_path)
+            except Exception as remove_error:
+                logger.warning(
+                    f"failed to remove invalid image file: {image_path}, error: {str(remove_error)}"
+                )
     return ""
 
 
@@ -291,6 +452,103 @@ def download_videos(
             logger.error(f"failed to download video: {utils.to_json(item)} => {str(e)}")
     logger.success(f"downloaded {len(video_paths)} videos")
     return video_paths
+
+
+def download_materials(
+    task_id: str,
+    search_terms: List[str],
+    source: str = "pexels",
+    material_types: List[str] = ("video", "image"),
+    video_aspect: VideoAspect = VideoAspect.portrait,
+    video_contact_mode: VideoConcatMode = VideoConcatMode.random,
+    audio_duration: float = 0.0,
+    max_clip_duration: int = 5,
+    image_clip_duration: int = 4,
+    convert_images_to_clips: bool = True,
+) -> List[str]:
+    """Tìm + tải hỗn hợp VIDEO và ẢNH theo keyword, trả về list đường dẫn local sẵn sàng.
+
+    Khi convert_images_to_clips=True, ảnh được chuyển sang clip .mp4 (Ken-Burns zoom)
+    nên caller chỉ thấy một danh sách .mp4 đồng nhất.
+    """
+    material_types = [t for t in material_types] or ["video"]
+    search_video = search_videos_pixabay if source == "pixabay" else search_videos_pexels
+    search_image = search_images_pixabay if source == "pixabay" else search_images_pexels
+
+    valid_items = []
+    valid_urls = set()
+    found_duration = 0.0
+
+    for search_term in search_terms:
+        items = []
+        if "video" in material_types:
+            items += search_video(
+                search_term=search_term,
+                minimum_duration=max_clip_duration,
+                video_aspect=video_aspect,
+            )
+        if "image" in material_types:
+            items += search_image(
+                search_term=search_term,
+                video_aspect=video_aspect,
+            )
+        logger.info(f"found {len(items)} materials for '{search_term}'")
+        for item in items:
+            if item.url not in valid_urls:
+                valid_items.append(item)
+                valid_urls.add(item.url)
+                found_duration += item.duration if item.type == MaterialType.video.value else image_clip_duration
+
+    logger.info(
+        f"found total materials: {len(valid_items)}, required duration: {audio_duration}s, found duration: {found_duration}s"
+    )
+
+    material_directory = config.app.get("material_directory", "").strip()
+    if material_directory == "task":
+        material_directory = utils.task_dir(task_id)
+    elif material_directory and not os.path.isdir(material_directory):
+        material_directory = ""
+
+    concat_mode_value = getattr(video_contact_mode, "value", video_contact_mode)
+    if concat_mode_value in (VideoConcatMode.random.value, VideoConcatMode.beat_sync.value):
+        random.shuffle(valid_items)
+
+    material_paths = []
+    total_duration = 0.0
+    for item in valid_items:
+        try:
+            if item.type == MaterialType.image.value:
+                logger.info(f"downloading image: {item.url}")
+                saved_path = save_image(image_url=item.url, save_dir=material_directory)
+                if saved_path and convert_images_to_clips:
+                    # Lazy import để tránh vòng lặp import (video.py không import material.py).
+                    from app.services.video import image_to_clip_file
+
+                    saved_path = image_to_clip_file(
+                        image_path=saved_path,
+                        clip_duration=image_clip_duration,
+                        video_aspect=video_aspect,
+                    )
+                seconds = image_clip_duration
+            else:
+                logger.info(f"downloading video: {item.url}")
+                saved_path = save_video(video_url=item.url, save_dir=material_directory)
+                seconds = min(max_clip_duration, item.duration)
+
+            if saved_path:
+                logger.info(f"material saved: {saved_path}")
+                material_paths.append(saved_path)
+                total_duration += seconds
+                if total_duration > audio_duration:
+                    logger.info(
+                        f"total duration of downloaded materials: {total_duration}s, skip downloading more"
+                    )
+                    break
+        except Exception as e:
+            logger.error(f"failed to download material: {utils.to_json(item)} => {str(e)}")
+
+    logger.success(f"downloaded {len(material_paths)} materials")
+    return material_paths
 
 
 if __name__ == "__main__":

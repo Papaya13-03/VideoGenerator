@@ -20,6 +20,7 @@ from moviepy import (
     TextClip,
     VideoFileClip,
     afx,
+    vfx,
 )
 from moviepy.video.tools.subtitles import SubtitlesClip
 from PIL import Image, ImageDraw, ImageFont
@@ -33,6 +34,7 @@ from app.models.schema import (
     VideoParams,
     VideoTransitionMode,
 )
+from app.services import audio_analysis
 from app.services.utils import video_effects
 from app.utils import file_security, utils
 
@@ -691,8 +693,162 @@ def combine_videos(
     
     # clean temp files
     delete_files(clip_files)
-            
+
     logger.info("video combining completed")
+    return combined_video_path
+
+
+def _resize_clip_to_canvas(clip, video_width: int, video_height: int):
+    """Resize/letterbox 1 clip về đúng khung video_width x video_height (logic từ combine_videos)."""
+    clip_w, clip_h = clip.size
+    if clip_w == video_width and clip_h == video_height:
+        return clip
+    clip_ratio = clip_w / clip_h
+    video_ratio = video_width / video_height
+    if clip_ratio == video_ratio:
+        return clip.resized(new_size=(video_width, video_height))
+    if clip_ratio > video_ratio:
+        scale_factor = video_width / clip_w
+    else:
+        scale_factor = video_height / clip_h
+    new_width = int(clip_w * scale_factor)
+    new_height = int(clip_h * scale_factor)
+    background = ColorClip(
+        size=(video_width, video_height), color=(0, 0, 0)
+    ).with_duration(clip.duration)
+    clip_resized = clip.resized(new_size=(new_width, new_height)).with_position("center")
+    return CompositeVideoClip([background, clip_resized])
+
+
+def _apply_transition(clip, transition_value, duration: float, shuffle_side: str = None):
+    """Áp transition cho clip với độ dài `duration` (logic từ combine_videos)."""
+    if transition_value in (None, VideoTransitionMode.none.value):
+        return clip
+    if shuffle_side is None:
+        shuffle_side = random.choice(["left", "right", "top", "bottom"])
+    if transition_value == VideoTransitionMode.fade_in.value:
+        return video_effects.fadein_transition(clip, duration)
+    if transition_value == VideoTransitionMode.fade_out.value:
+        return video_effects.fadeout_transition(clip, duration)
+    if transition_value == VideoTransitionMode.slide_in.value:
+        return video_effects.slidein_transition(clip, duration, shuffle_side)
+    if transition_value == VideoTransitionMode.slide_out.value:
+        return video_effects.slideout_transition(clip, duration, shuffle_side)
+    if transition_value == VideoTransitionMode.shuffle.value:
+        transition_funcs = [
+            lambda c: video_effects.fadein_transition(c, duration),
+            lambda c: video_effects.fadeout_transition(c, duration),
+            lambda c: video_effects.slidein_transition(c, duration, shuffle_side),
+            lambda c: video_effects.slideout_transition(c, duration, shuffle_side),
+        ]
+        return random.choice(transition_funcs)(clip)
+    return clip
+
+
+def combine_videos_beatsync(
+    combined_video_path: str,
+    material_paths: List[str],
+    music_file: str,
+    audio_file: str = None,
+    video_aspect: VideoAspect = VideoAspect.portrait,
+    video_transition_mode: VideoTransitionMode = None,
+    beats_per_segment: int = 4,
+    threads: int = 2,
+) -> str:
+    """Ghép các material (.mp4) đồng bộ theo nhịp của `music_file`.
+
+    Mỗi segment (ranh giới = beat) được cắt/loop cho khớp đúng độ dài, nên các điểm
+    chuyển cảnh rơi đúng vào beat. Nhạc là trục thời gian; `audio_file` (voiceover)
+    chỉ dùng để nới tổng thời lượng nếu dài hơn nhạc.
+    """
+    if not material_paths:
+        logger.warning("no materials for beat-sync combine")
+        return combined_video_path
+
+    # 1. Tổng thời lượng = max(nhạc, voiceover nếu có).
+    music_clip = AudioFileClip(music_file)
+    try:
+        total_duration = music_clip.duration
+    finally:
+        close_clip(music_clip)
+    if audio_file and os.path.exists(audio_file):
+        vo = AudioFileClip(audio_file)
+        try:
+            total_duration = max(total_duration, vo.duration)
+        finally:
+            close_clip(vo)
+
+    # 2. Ranh giới segment theo beat (tự fallback cắt cố định nếu không có librosa).
+    segments, used_beats = audio_analysis.get_segment_boundaries(
+        music_file, total_duration, beats_per_segment=beats_per_segment
+    )
+    logger.info(
+        f"beat-sync: {len(segments)} segments, used_beats={used_beats}, total={total_duration:.2f}s"
+    )
+
+    transition_value = getattr(video_transition_mode, "value", video_transition_mode)
+    output_dir = os.path.dirname(combined_video_path)
+    aspect = VideoAspect(video_aspect)
+    video_width, video_height = aspect.to_resolution()
+
+    material_cycle = itertools.cycle(material_paths)
+    processed_files = []
+    for i, (seg_start, seg_end) in enumerate(segments):
+        seg_dur = seg_end - seg_start
+        if seg_dur <= 0:
+            continue
+        src = next(material_cycle)
+        clip = None
+        try:
+            clip = _open_video_clip_quietly(src)
+            src_dur = clip.duration
+            # Khớp clip với độ dài segment: dài hơn -> cắt; ngắn hơn -> loop.
+            if src_dur >= seg_dur:
+                clip = clip.subclipped(0, seg_dur)
+            else:
+                clip = clip.with_effects([vfx.Loop(duration=seg_dur)])
+
+            clip = _resize_clip_to_canvas(clip, video_width, video_height)
+
+            # Transition rơi đúng beat: clamp độ dài để không vượt nửa segment.
+            if transition_value not in (None, VideoTransitionMode.none.value):
+                clip = _apply_transition(
+                    clip, transition_value, min(1.0, seg_dur / 2)
+                )
+
+            clip_file = f"{output_dir}/temp-beat-{i + 1}.mp4"
+            _write_videofile_with_codec_fallback(
+                clip,
+                clip_file,
+                codec=_get_configured_video_codec(),
+                logger=None,
+                fps=fps,
+            )
+            processed_files.append(clip_file)
+        except Exception as e:
+            logger.error(f"failed to process beat segment {i + 1}: {str(e)}")
+        finally:
+            if clip is not None:
+                close_clip(clip)
+
+    if not processed_files:
+        logger.warning("no clips produced for beat-sync")
+        return combined_video_path
+
+    if len(processed_files) == 1:
+        shutil.copy(processed_files[0], combined_video_path)
+        delete_files(processed_files)
+        return combined_video_path
+
+    logger.info(f"concatenating {len(processed_files)} beat-sync clips with ffmpeg")
+    concat_video_clips_with_ffmpeg(
+        clip_files=processed_files,
+        output_file=combined_video_path,
+        threads=threads,
+        output_dir=output_dir,
+    )
+    delete_files(processed_files)
+    logger.info("beat-sync video combining completed")
     return combined_video_path
 
 
@@ -934,9 +1090,6 @@ def generate_video(
         return _clip
 
     video_clip = _open_video_clip_quietly(video_path)
-    audio_clip = AudioFileClip(audio_path).with_effects(
-        [afx.MultiplyVolume(params.voice_volume)]
-    )
 
     def make_textclip(text):
         return TextClip(
@@ -955,21 +1108,49 @@ def generate_video(
             text_clips.append(clip)
         video_clip = CompositeVideoClip([video_clip, *text_clips])
 
-    bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
-    if bgm_file:
+    # --- Lớp âm thanh: voiceover (tùy chọn) + nhạc/BGM ---
+    # voiceover_enabled=False => montage chỉ nhạc, không lời.
+    voiceover_enabled = getattr(params, "voiceover_enabled", True)
+    audio_layers = []
+    if voiceover_enabled and audio_path and os.path.exists(audio_path):
+        audio_layers.append(
+            AudioFileClip(audio_path).with_effects(
+                [afx.MultiplyVolume(params.voice_volume)]
+            )
+        )
+
+    # Nhạc trục: ưu tiên params.music_file, fallback bgm_type/bgm_file như cũ.
+    music_file = ""
+    if getattr(params, "music_file", None):
+        # bgm_type truthy để vượt qua early-return trong get_bgm_file và đi vào nhánh bgm_file.
+        music_file = get_bgm_file(bgm_type="file", bgm_file=params.music_file)
+    if not music_file:
+        music_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
+
+    if music_file:
         try:
-            bgm_clip = AudioFileClip(bgm_file).with_effects(
+            # Không có voiceover => nhạc là âm thanh chính, để nguyên âm lượng (1.0).
+            music_volume = params.bgm_volume if audio_layers else 1.0
+            bgm_clip = AudioFileClip(music_file).with_effects(
                 [
-                    afx.MultiplyVolume(params.bgm_volume),
+                    afx.MultiplyVolume(music_volume),
                     afx.AudioFadeOut(3),
                     afx.AudioLoop(duration=video_clip.duration),
                 ]
             )
-            audio_clip = CompositeAudioClip([audio_clip, bgm_clip])
+            audio_layers.append(bgm_clip)
         except Exception as e:
-            logger.error(f"failed to add bgm: {str(e)}")
+            logger.error(f"failed to add bgm/music: {str(e)}")
 
-    video_clip = video_clip.with_audio(audio_clip)
+    if not audio_layers:
+        audio_clip = None
+    elif len(audio_layers) == 1:
+        audio_clip = audio_layers[0]
+    else:
+        audio_clip = CompositeAudioClip(audio_layers)
+
+    if audio_clip is not None:
+        video_clip = video_clip.with_audio(audio_clip)
     # 显式沿用输入音频的采样率；如果取不到，再回退到 MoviePy 默认的 44100Hz。
     # 这样可以减少不同运行环境，尤其是 Docker 环境中再次重采样带来的音质波动。
     output_audio_fps = int(getattr(audio_clip, "fps", 0) or 44100)
@@ -987,6 +1168,60 @@ def generate_video(
     )
     video_clip.close()
     del video_clip
+
+
+def image_to_clip_file(
+    image_path: str,
+    clip_duration: float,
+    video_aspect: VideoAspect = VideoAspect.portrait,
+    zoom: bool = True,
+) -> str:
+    """Chuyển 1 ảnh tĩnh thành clip .mp4 với hiệu ứng Ken-Burns zoom.
+
+    Trả về đường dẫn `{image_path}.mp4`, hoặc "" nếu ảnh lỗi / độ phân giải thấp.
+    Dùng chung bởi preprocess_video (ảnh local) và material.download_materials (ảnh tải về).
+    """
+    try:
+        probe_clip, image_path = _open_image_clip_with_fallback(image_path)
+    except Exception as exc:
+        logger.warning(f"skip unreadable image: {image_path}, error: {str(exc)}")
+        return ""
+
+    try:
+        width, height = probe_clip.size
+        if width < 480 or height < 480:
+            logger.warning(
+                f"low resolution image: {width}x{height}, minimum 480x480 required"
+            )
+            return ""
+    finally:
+        close_clip(probe_clip)
+
+    final_clip = None
+    base_clip = None
+    try:
+        base_clip = (
+            ImageClip(image_path).with_duration(clip_duration).with_position("center")
+        )
+        # Zoom động: từ 100% lên dần (t/clip_duration đi 0→1 trong suốt clip).
+        out_clip = (
+            base_clip.resized(lambda t: 1 + (clip_duration * 0.03) * (t / clip_duration))
+            if zoom
+            else base_clip
+        )
+        final_clip = CompositeVideoClip([out_clip])
+        video_file = f"{image_path}.mp4"
+        final_clip.write_videofile(video_file, fps=30, logger=None)
+        logger.success(f"image -> clip: {video_file}")
+        return video_file
+    except Exception as exc:
+        logger.warning(f"failed to convert image to clip: {image_path}, error: {str(exc)}")
+        return ""
+    finally:
+        if base_clip is not None:
+            close_clip(base_clip)
+        if final_clip is not None:
+            close_clip(final_clip)
 
 
 def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
@@ -1047,32 +1282,14 @@ def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
 
             if ext in const.FILE_TYPE_IMAGES:
                 logger.info(f"processing image: {material_source_path}")
-                # 探测尺寸时已经打开过一次素材，这里先释放探测句柄，再重新创建用于导出的图片 clip。
+                # 探测尺寸时已经打开过一次素材，这里先释放探测句柄，再交给共享的 image_to_clip_file。
                 close_clip(clip)
-                # Create an image clip and set its duration to 3 seconds
-                clip = (
-                    ImageClip(material_source_path)
-                    .with_duration(clip_duration)
-                    .with_position("center")
+                video_file = image_to_clip_file(
+                    image_path=material_source_path,
+                    clip_duration=clip_duration,
                 )
-                # Apply a zoom effect using the resize method.
-                # A lambda function is used to make the zoom effect dynamic over time.
-                # The zoom effect starts from the original size and gradually scales up to 120%.
-                # t represents the current time, and clip.duration is the total duration of the clip (3 seconds).
-                # Note: 1 represents 100% size, so 1.2 represents 120% size.
-                zoom_clip = clip.resized(
-                    lambda t: 1 + (clip_duration * 0.03) * (t / clip.duration)
-                )
-
-                # Optionally, create a composite video clip containing the zoomed clip.
-                # This is useful when you want to add other elements to the video.
-                final_clip = CompositeVideoClip([zoom_clip])
-
-                # Output the video to a file.
-                video_file = f"{material_source_path}.mp4"
-                final_clip.write_videofile(video_file, fps=30, logger=None)
-                close_clip(clip)
-                close_clip(final_clip)
+                if not video_file:
+                    continue
                 material.url = video_file
                 logger.success(f"image processed: {video_file}")
             else:
