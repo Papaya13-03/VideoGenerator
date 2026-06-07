@@ -14,21 +14,23 @@ Kế hoạch chia làm **2 phần**: (A) Engine lõi — tính năng beat-sync +
 
 ## Cấu trúc monorepo (đích đến)
 
+Polyglot monorepo — chỉ gộp 1 repo cho tiện, **backend (Python) và frontend (Next.js) là microservice tách biệt**, không share toolchain (giao tiếp qua REST API):
+
 ```
 VideoGenerator/
-  engine/        # = app/services + app/models + app/config + app/utils copy sang
-                 #   (material, video, audio_analysis, task, voice, subtitle, llm...)
-  api/           # FastAPI tier: controllers, router, asgi — chỉ HTTP/auth/DB/enqueue
-  worker/        # Arq worker: pull job → gọi engine.task.start (cùng image với engine)
-  frontend/      # Next.js app
-  resource/      # fonts, songs (copy sang)
-  storage/       # scratch dir cho ffmpeg (dev); prod dùng object storage
-  migrations/    # Alembic
-  pyproject.toml
-  docker-compose.yml
+  backend/             # Toàn bộ Python (đã copy từ MoneyPrinterTurbo)
+    app/               # services + models + config + utils (engine hiện tại)
+    webui/             # Streamlit (chỉ để test/debug, bỏ ở prod)
+    main.py            # FastAPI entrypoint
+    resource/          # fonts, songs
+    storage/           # scratch ffmpeg (dev); prod dùng object storage
+    pyproject.toml, Dockerfile, ...
+    # Pha 1 tách nội bộ: app/ → engine/ + api/ + worker/ (microservice trong backend)
+  frontend/            # Next.js app (dựng ở Pha 3)
+  PLAN.md
 ```
 
-**Chiến lược copy (Pha 0):** copy nguyên `app/` của MoneyPrinterTurbo vào VideoGenerator giữ nguyên cấu trúc để chạy được ngay, làm Phần A trên đó. Việc **tách `app/` → engine/api/worker** để ở Pha 1 (refactor có chủ đích, không làm cùng lúc với beat-sync để giảm rủi ro).
+**Chiến lược (Pha 0):** copy nguyên `app/` của MoneyPrinterTurbo vào `backend/` giữ nguyên cấu trúc để chạy được ngay (root_dir = `backend/`), làm Phần A trên đó. Việc **tách `app/` → engine/api/worker** (vẫn trong `backend/`) để ở Pha 1.
 
 ---
 
