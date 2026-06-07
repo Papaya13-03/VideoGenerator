@@ -33,6 +33,10 @@ export interface JobList {
 // Maps 1:1 to the backend VideoParams subset the composer exposes.
 export interface CreateJobInput {
   video_subject: string;
+  // MoneyPrinter-style: AI-generated, user-editable script + search terms.
+  video_script?: string;
+  video_terms?: string; // comma-separated; backend accepts str or list
+  video_script_prompt?: string;
   video_aspect: "16:9" | "9:16" | "1:1";
   video_concat_mode: "random" | "sequential" | "beat_sync";
   beat_sync_enabled: boolean;

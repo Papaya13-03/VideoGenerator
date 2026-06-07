@@ -73,6 +73,26 @@ export const api = {
 
   me: () => request<User>("/me"),
 
+  // MoneyPrinter-style content generation (LLM), editable by the user before rendering.
+  generateScript: (videoSubject: string, prompt = "") =>
+    request<{ data: { video_script: string } }>("/scripts", {
+      method: "POST",
+      body: JSON.stringify({
+        video_subject: videoSubject,
+        video_script_prompt: prompt,
+      }),
+    }).then((b) => unwrap(b).video_script),
+
+  generateTerms: (videoSubject: string, videoScript: string) =>
+    request<{ data: { video_terms: string[] } }>("/terms", {
+      method: "POST",
+      body: JSON.stringify({
+        video_subject: videoSubject,
+        video_script: videoScript,
+        amount: 5,
+      }),
+    }).then((b) => unwrap(b).video_terms),
+
   createJob: (input: CreateJobInput) =>
     request<{ data: { job_id: string } }>("/jobs", {
       method: "POST",

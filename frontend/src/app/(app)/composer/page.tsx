@@ -14,7 +14,14 @@ const ASPECTS = [
 export default function ComposerPage() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+
+  // MoneyPrinter-style content: keyword -> AI script + terms, user-editable.
+  const [scriptPrompt, setScriptPrompt] = useState("");
+  const [script, setScript] = useState("");
+  const [terms, setTerms] = useState("");
+
   const [form, setForm] = useState<CreateJobInput>({
     video_subject: "",
     video_aspect: "9:16",
@@ -41,6 +48,26 @@ export default function ComposerPage() {
     });
   }
 
+  // Press "Generate with AI": create the script from the keyword, then search terms.
+  async function generate() {
+    if (!form.video_subject.trim()) {
+      setError("Enter a keyword first");
+      return;
+    }
+    setError("");
+    setGenerating(true);
+    try {
+      const s = await api.generateScript(form.video_subject, scriptPrompt);
+      setScript(s);
+      const t = await api.generateTerms(form.video_subject, s);
+      setTerms(t.join(", "));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -48,6 +75,10 @@ export default function ComposerPage() {
     try {
       const jobId = await api.createJob({
         ...form,
+        // Pass the (possibly edited) script + terms so the backend uses them as-is.
+        video_script: script.trim() || undefined,
+        video_terms: terms.trim() || undefined,
+        video_script_prompt: scriptPrompt.trim() || undefined,
         video_concat_mode: form.beat_sync_enabled
           ? "beat_sync"
           : form.video_concat_mode,
@@ -62,11 +93,14 @@ export default function ComposerPage() {
 
   const card = "rounded-xl border border-neutral-800 bg-neutral-900 p-4 space-y-3";
   const labelCls = "text-sm font-medium text-neutral-300";
+  const inputCls =
+    "w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-neutral-500";
 
   return (
     <form onSubmit={submit} className="space-y-5">
       <h1 className="text-2xl font-semibold">Create a video</h1>
 
+      {/* 1. Keyword + AI script/terms (MoneyPrinter flow) */}
       <div className={card}>
         <label className={labelCls}>Keyword / topic</label>
         <input
@@ -74,10 +108,49 @@ export default function ComposerPage() {
           value={form.video_subject}
           onChange={(e) => set("video_subject", e.target.value)}
           placeholder="e.g. calm ocean waves at sunset"
-          className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+          className={inputCls}
         />
+        <input
+          value={scriptPrompt}
+          onChange={(e) => setScriptPrompt(e.target.value)}
+          placeholder="Optional: extra prompt to steer the script"
+          className={inputCls}
+        />
+        <button
+          type="button"
+          onClick={generate}
+          disabled={generating}
+          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+        >
+          {generating ? "Generating..." : "✨ Generate script & terms with AI"}
+        </button>
+
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">
+            Script (editable — leave blank to auto-generate at render time)
+          </label>
+          <textarea
+            value={script}
+            onChange={(e) => setScript(e.target.value)}
+            rows={5}
+            placeholder="The AI-generated narration script appears here; edit freely."
+            className={inputCls}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">
+            Search terms (comma-separated — used to find clips/images)
+          </label>
+          <input
+            value={terms}
+            onChange={(e) => setTerms(e.target.value)}
+            placeholder="ocean, waves, sunset, beach"
+            className={inputCls}
+          />
+        </div>
       </div>
 
+      {/* 2. Media source & type */}
       <div className={card}>
         <label className={labelCls}>Media source & type</label>
         <div className="flex gap-3">
@@ -104,6 +177,7 @@ export default function ComposerPage() {
         </div>
       </div>
 
+      {/* 3. Aspect ratio */}
       <div className={card}>
         <label className={labelCls}>Aspect ratio</label>
         <div className="flex gap-2">
@@ -124,9 +198,10 @@ export default function ComposerPage() {
         </div>
       </div>
 
+      {/* 4. Beat-sync */}
       <div className={card}>
         <label className="flex items-center justify-between">
-          <span className={labelCls}>Beat-sync to music</span>
+          <span className={labelCls}>🎵 Beat-sync to music</span>
           <input
             type="checkbox"
             checked={form.beat_sync_enabled}
@@ -150,12 +225,13 @@ export default function ComposerPage() {
               value={form.music_file}
               onChange={(e) => set("music_file", e.target.value)}
               placeholder="Music file (in resource/songs), blank = random BGM"
-              className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
+              className={inputCls}
             />
           </div>
         )}
       </div>
 
+      {/* 5. Voiceover */}
       <div className={card}>
         <label className="flex items-center justify-between">
           <span className={labelCls}>Voiceover (AI narration)</span>
@@ -166,7 +242,7 @@ export default function ComposerPage() {
           />
         </label>
         <p className="text-xs text-neutral-500">
-          Off = music-only montage. On = generate a spoken script over the clips.
+          Off = music-only montage. On = narrate the script over the clips.
         </p>
       </div>
 
