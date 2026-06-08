@@ -6,23 +6,52 @@ import { api } from "@/lib/api";
 
 type FieldDef = { name: string; label: string; type?: "select"; options?: string[] };
 
-const PROVIDERS: { id: string; title: string; hint: string; fields: FieldDef[] }[] = [
+// Where to get each key. For LLM/TTS the link depends on the selected provider.
+const LLM_KEY_URLS: Record<string, string> = {
+  openai: "https://platform.openai.com/api-keys",
+  groq: "https://console.groq.com/keys",
+  gemini: "https://aistudio.google.com/app/apikey",
+  moonshot: "https://platform.moonshot.cn/console/api-keys",
+  deepseek: "https://platform.deepseek.com/api_keys",
+  qwen: "https://dashscope.console.aliyun.com/apiKey",
+  azure: "https://portal.azure.com/",
+  oneapi: "https://github.com/songquanpeng/one-api",
+};
+
+const TTS_KEY_URLS: Record<string, string> = {
+  azure:
+    "https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices",
+};
+
+interface ProviderDef {
+  id: string;
+  title: string;
+  hint: string;
+  fields: FieldDef[];
+  keyUrl?: string; // static "get key" link
+  keyUrlByProvider?: Record<string, string>; // link depends on selected `provider` field
+}
+
+const PROVIDERS: ProviderDef[] = [
   {
     id: "pexels",
     title: "Pexels",
     hint: "API key(s) for video/image search. Comma-separate multiple keys.",
+    keyUrl: "https://www.pexels.com/api/",
     fields: [{ name: "api_keys", label: "API key(s)" }],
   },
   {
     id: "pixabay",
     title: "Pixabay",
     hint: "API key(s) for video/image search.",
+    keyUrl: "https://pixabay.com/api/docs/",
     fields: [{ name: "api_keys", label: "API key(s)" }],
   },
   {
     id: "llm",
     title: "LLM (script & terms)",
     hint: "Provider used to generate the script and search terms.",
+    keyUrlByProvider: LLM_KEY_URLS,
     fields: [
       {
         name: "provider",
@@ -39,6 +68,7 @@ const PROVIDERS: { id: string; title: string; hint: string; fields: FieldDef[] }
     id: "tts",
     title: "TTS (voiceover)",
     hint: "Edge (default) needs no key. Azure needs a speech key + region.",
+    keyUrlByProvider: TTS_KEY_URLS,
     fields: [
       { name: "provider", label: "Provider", type: "select", options: ["edge", "azure"] },
       { name: "api_key", label: "Azure speech key" },
@@ -91,6 +121,11 @@ function ProviderCard({
   const input =
     "w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-neutral-500";
 
+  // Link to where the user obtains this key (depends on selected provider for LLM/TTS).
+  const keyUrl = def.keyUrlByProvider
+    ? def.keyUrlByProvider[values.provider || ""]
+    : def.keyUrl;
+
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -102,6 +137,16 @@ function ProviderCard({
         )}
       </div>
       <p className="text-xs text-neutral-500">{def.hint}</p>
+      {keyUrl && (
+        <a
+          href={keyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 hover:underline"
+        >
+          Get your API key ↗
+        </a>
+      )}
       {def.fields.map((f) => (
         <div key={f.name} className="space-y-1">
           <label className="text-xs text-neutral-400">{f.label}</label>
