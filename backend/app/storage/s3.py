@@ -14,20 +14,34 @@ class S3StorageBackend(StorageBackend):
         secret_key: str = "",
         region: str = "us-east-1",
         public_base_url: str = "",
+        public_endpoint_url: str = "",
     ):
         import boto3
         from botocore.client import Config as BotoConfig
 
         self.bucket = bucket
         self.public_base_url = public_base_url.rstrip("/")
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=endpoint_url or None,
+        # Path-style addressing is required by MinIO and avoids bucket.host DNS issues.
+        boto_cfg = BotoConfig(
+            signature_version="s3v4", s3={"addressing_style": "path"}
+        )
+        common = dict(
             aws_access_key_id=access_key or None,
             aws_secret_access_key=secret_key or None,
             region_name=region,
-            config=BotoConfig(signature_version="s3v4"),
+            config=boto_cfg,
         )
+        # Internal client: used for upload/download/head/delete (docker network host).
+        self._client = boto3.client("s3", endpoint_url=endpoint_url or None, **common)
+        # Presign client: generates URLs the *browser* can reach. When MinIO is only
+        # reachable inside docker as "minio:9000", presigned URLs must use the
+        # host-published endpoint (e.g. http://localhost:9000) or they won't resolve.
+        if public_endpoint_url:
+            self._presign_client = boto3.client(
+                "s3", endpoint_url=public_endpoint_url, **common
+            )
+        else:
+            self._presign_client = self._client
         self._ensure_bucket()
 
     def _ensure_bucket(self) -> None:
@@ -54,7 +68,7 @@ class S3StorageBackend(StorageBackend):
     def url_for(self, key: str, expires: int = 3600) -> str:
         if self.public_base_url:
             return f"{self.public_base_url}/{key}"
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=expires,

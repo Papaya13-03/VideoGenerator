@@ -211,6 +211,7 @@ if os.getenv("MPT_STORAGE_BACKEND"):
     storage["backend"] = os.getenv("MPT_STORAGE_BACKEND")
 for _env_key, _cfg_key in (
     ("MPT_STORAGE_S3_ENDPOINT_URL", "s3_endpoint_url"),
+    ("MPT_STORAGE_S3_PUBLIC_ENDPOINT_URL", "s3_public_endpoint_url"),
     ("MPT_STORAGE_S3_BUCKET", "s3_bucket"),
     ("MPT_STORAGE_S3_ACCESS_KEY", "s3_access_key"),
     ("MPT_STORAGE_S3_SECRET_KEY", "s3_secret_key"),

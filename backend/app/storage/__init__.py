@@ -25,6 +25,7 @@ def get_storage() -> StorageBackend:
             secret_key=cfg.get("s3_secret_key", ""),
             region=cfg.get("s3_region", "us-east-1"),
             public_base_url=cfg.get("public_base_url", ""),
+            public_endpoint_url=cfg.get("s3_public_endpoint_url", ""),
         )
 
     logger.info("storage backend: local")

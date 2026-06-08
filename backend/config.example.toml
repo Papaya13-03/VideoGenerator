@@ -277,6 +277,10 @@ max_queued_tasks = 100
 backend = "local"
 # When backend = "s3":
 s3_endpoint_url = ""      # MinIO/R2: http://minio:9000 ; AWS: leave empty
+# Browser-reachable endpoint used only to sign download URLs. Set this when the
+# internal endpoint (e.g. http://minio:9000) is not resolvable from the user's browser
+# (e.g. http://localhost:9000). Leave empty for AWS/R2 public endpoints.
+s3_public_endpoint_url = ""
 s3_bucket = "videogenerator"
 s3_access_key = ""
 s3_secret_key = ""
