@@ -23,6 +23,8 @@ x-backend-build: &backend-build
     MPT_DATABASE_URL: postgresql+psycopg2://vg:vgpass@postgres:5432/videogenerator
     MPT_JWT_SECRET: change-me-in-production
     MPT_SECRET_KEY: change-me-too-for-key-encryption
+    # Max seconds per render job before the worker aborts it. Raise for long/slow renders.
+    MPT_JOB_TIMEOUT: "5400"
 
 services:
   redis:

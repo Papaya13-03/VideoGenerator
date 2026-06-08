@@ -115,6 +115,13 @@ async def render_job(ctx, task_id: str, params_dict: dict, stop_at: str = "video
         result = await loop.run_in_executor(
             None, lambda: _run_pipeline(task_id, params, stop_at, user_id)
         )
+    except asyncio.CancelledError:
+        # arq cancels the task when job_timeout is exceeded. The executor thread cannot
+        # be killed and may still finish later, but mark the job failed so it isn't stuck
+        # in "processing". Raise the worker timeout via MPT_JOB_TIMEOUT for slow renders.
+        logger.error(f"render job {task_id} timed out / was cancelled")
+        _update_job(task_id, status="failed", error="render timed out", finished_at=_now())
+        raise
     except Exception as e:
         logger.error(f"render job {task_id} crashed: {e}")
         _update_job(task_id, status="failed", error=str(e), finished_at=_now())

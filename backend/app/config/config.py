@@ -202,6 +202,8 @@ app["enable_redis"] = _env_bool("MPT_APP_ENABLE_REDIS", app.get("enable_redis", 
 app["use_arq"] = _env_bool("MPT_APP_USE_ARQ", app.get("use_arq", False))
 if os.getenv("MPT_APP_REDIS_PORT"):
     app["redis_port"] = int(os.getenv("MPT_APP_REDIS_PORT"))
+if os.getenv("MPT_JOB_TIMEOUT"):
+    app["job_timeout"] = int(os.getenv("MPT_JOB_TIMEOUT"))
 if os.getenv("MPT_APP_REDIS_PASSWORD") is not None:
     app["redis_password"] = os.getenv("MPT_APP_REDIS_PASSWORD")
 
