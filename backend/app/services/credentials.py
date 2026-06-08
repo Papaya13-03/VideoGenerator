@@ -7,6 +7,7 @@ the global config. Contextvar isolation keeps concurrent jobs from leaking keys.
 
 import contextvars
 import json
+from contextlib import contextmanager
 
 from loguru import logger
 
@@ -95,21 +96,46 @@ def overrides_from_credentials(rows) -> dict:
     return result
 
 
-def load_user_overrides(user_id: str) -> dict:
-    """Load + build overrides for a user from the DB (best-effort)."""
+@contextmanager
+def user_credentials(user_id: str, db=None):
+    """Context manager that applies a user's API-key overrides for the duration of a call.
+
+    Used by synchronous API endpoints (e.g. /scripts, /terms) that run in the API process.
+    Pass the request's `db` session so it reads the same database as the rest of the request.
+    """
+    token = set_overrides(load_user_overrides(user_id, db=db))
+    try:
+        yield
+    finally:
+        reset_overrides(token)
+
+
+def _query_overrides(db, user_id: str) -> dict:
+    from app.db.models import ProviderCredential
+
+    rows = (
+        db.query(ProviderCredential)
+        .filter(ProviderCredential.user_id == user_id)
+        .all()
+    )
+    return overrides_from_credentials(rows)
+
+
+def load_user_overrides(user_id: str, db=None) -> dict:
+    """Load + build overrides for a user from the DB (best-effort).
+
+    Uses the provided session if given (request scope); otherwise opens its own
+    (worker scope, real engine).
+    """
     if not user_id:
         return {}
     try:
-        from app.db.models import ProviderCredential
+        if db is not None:
+            return _query_overrides(db, user_id)
         from app.db.session import SessionLocal
 
-        with SessionLocal() as db:
-            rows = (
-                db.query(ProviderCredential)
-                .filter(ProviderCredential.user_id == user_id)
-                .all()
-            )
-            return overrides_from_credentials(rows)
+        with SessionLocal() as own_db:
+            return _query_overrides(own_db, user_id)
     except Exception as e:
         logger.warning(f"failed to load user overrides for {user_id}: {e}")
         return {}

@@ -96,6 +96,34 @@ def test_masked_value_not_overwriting_secret(client):
     assert fields["api_key"].startswith("••••")
 
 
+def test_llm_endpoint_uses_caller_key(client, monkeypatch):
+    # The /terms endpoint must run with the authenticated user's LLM key override active.
+    t = _token(client, "llmuser@e.com")
+    client.put(
+        "/api/v1/settings/keys/llm",
+        headers=_auth(t),
+        json={"provider": "openai", "api_key": "sk-user-key"},
+    )
+
+    from app.services import credentials, llm
+
+    # Capture what the engine would read for the OpenAI key during the call.
+    def fake_terms(video_subject, video_script, amount=5):
+        return [credentials.cfg("openai_api_key") or "NONE", credentials.cfg("llm_provider") or "NONE"]
+
+    monkeypatch.setattr(llm, "generate_terms", fake_terms)
+
+    r = client.post(
+        "/api/v1/terms",
+        headers=_auth(t),
+        json={"video_subject": "x", "video_script": "y", "amount": 5},
+    )
+    assert r.status_code == 200, r.text
+    terms = r.json()["data"]["video_terms"]
+    assert terms[0] == "sk-user-key"  # override applied
+    assert terms[1] == "openai"
+
+
 def test_overrides_from_credentials_mapping():
     # Unit-test the mapping from stored creds to config overrides.
     from app.auth.crypto import encrypt
