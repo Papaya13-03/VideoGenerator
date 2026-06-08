@@ -93,6 +93,18 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def _run_pipeline(task_id: str, params: "VideoParams", stop_at: str, user_id: str):
+    """Run the pipeline with the user's API keys layered over the global config."""
+    from app.services import credentials
+
+    overrides = credentials.load_user_overrides(user_id)
+    token = credentials.set_overrides(overrides)
+    try:
+        return tm.start(task_id, params, stop_at)
+    finally:
+        credentials.reset_overrides(token)
+
+
 async def render_job(ctx, task_id: str, params_dict: dict, stop_at: str = "video", user_id: str = ""):
     """Run the (synchronous) render pipeline in an executor so the worker event loop stays free."""
     logger.info(f"worker picked up render job: {task_id} (stop_at={stop_at}, user={user_id or '-'})")
@@ -100,7 +112,9 @@ async def render_job(ctx, task_id: str, params_dict: dict, stop_at: str = "video
     params = VideoParams(**params_dict)
     loop = asyncio.get_event_loop()
     try:
-        result = await loop.run_in_executor(None, lambda: tm.start(task_id, params, stop_at))
+        result = await loop.run_in_executor(
+            None, lambda: _run_pipeline(task_id, params, stop_at, user_id)
+        )
     except Exception as e:
         logger.error(f"render job {task_id} crashed: {e}")
         _update_job(task_id, status="failed", error=str(e), finished_at=_now())

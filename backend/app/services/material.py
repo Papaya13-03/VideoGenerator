@@ -37,7 +37,9 @@ def _get_tls_verify() -> bool:
 
 
 def get_api_key(cfg_key: str):
-    api_keys = config.app.get(cfg_key)
+    from app.services.credentials import cfg
+
+    api_keys = cfg(cfg_key)
     if not api_keys:
         raise ValueError(
             f"\n\n##### {cfg_key} is not set #####\n\nPlease set it in the config.toml file: {config.config_file}\n\n"

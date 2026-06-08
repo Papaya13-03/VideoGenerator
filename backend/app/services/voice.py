@@ -873,8 +873,10 @@ def azure_tts_v2(text: str, voice_name: str, voice_file: str) -> Union[SubMaker,
                 sub_maker.offset.append((offset, offset + duration))
 
             # Creates an instance of a speech config with specified subscription key and service region.
-            speech_key = config.azure.get("speech_key", "")
-            service_region = config.azure.get("speech_region", "")
+            from app.services.credentials import cfg
+
+            speech_key = cfg("speech_key", "", section="azure")
+            service_region = cfg("speech_region", "", section="azure")
             if not speech_key or not service_region:
                 logger.error("Azure speech key or region is not set")
                 return None

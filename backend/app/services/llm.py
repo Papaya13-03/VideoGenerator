@@ -9,6 +9,7 @@ from openai import AzureOpenAI, OpenAI
 from openai.types.chat import ChatCompletion
 
 from app.config import config
+from app.services.credentials import cfg
 
 _max_retries = 5
 _DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
@@ -119,10 +120,10 @@ def _extract_qwen_generation_text(response) -> str:
 def _generate_response(prompt: str) -> str:
     try:
         content = ""
-        llm_provider = config.app.get("llm_provider", "openai")
+        llm_provider = cfg("llm_provider", "openai")
         logger.info(f"llm provider: {llm_provider}")
         if llm_provider == "g4f":
-            if not config.app.get("enable_g4f", False):
+            if not cfg("enable_g4f", False):
                 raise ValueError(
                     "g4f provider is disabled by default because it relies on "
                     "reverse-engineered third-party endpoints. Set enable_g4f=true "
@@ -144,7 +145,7 @@ def _generate_response(prompt: str) -> str:
                     "and accept the provider risks."
                 ) from e
 
-            model_name = config.app.get("g4f_model_name", "")
+            model_name = cfg("g4f_model_name", "")
             if not model_name:
                 model_name = "gpt-3.5-turbo-16k-0613"
             content = g4f.ChatCompletion.create(
@@ -154,26 +155,26 @@ def _generate_response(prompt: str) -> str:
         else:
             api_version = ""  # for azure
             if llm_provider == "moonshot":
-                api_key = config.app.get("moonshot_api_key")
-                model_name = config.app.get("moonshot_model_name")
+                api_key = cfg("moonshot_api_key")
+                model_name = cfg("moonshot_model_name")
                 base_url = "https://api.moonshot.cn/v1"
             elif llm_provider == "ollama":
-                # api_key = config.app.get("openai_api_key")
+                # api_key = cfg("openai_api_key")
                 api_key = "ollama"  # any string works but you are required to have one
-                model_name = config.app.get("ollama_model_name")
-                base_url = config.app.get("ollama_base_url", "")
+                model_name = cfg("ollama_model_name")
+                base_url = cfg("ollama_base_url", "")
                 if not base_url:
                     base_url = config.get_default_ollama_base_url()
             elif llm_provider == "openai":
-                api_key = config.app.get("openai_api_key")
-                model_name = config.app.get("openai_model_name")
-                base_url = config.app.get("openai_base_url", "")
+                api_key = cfg("openai_api_key")
+                model_name = cfg("openai_model_name")
+                base_url = cfg("openai_base_url", "")
                 if not base_url:
                     base_url = "https://api.openai.com/v1"
             elif llm_provider == "aihubmix":
-                api_key = config.app.get("aihubmix_api_key")
-                model_name = config.app.get("aihubmix_model_name")
-                base_url = config.app.get("aihubmix_base_url", "")
+                api_key = cfg("aihubmix_api_key")
+                model_name = cfg("aihubmix_model_name")
+                base_url = cfg("aihubmix_base_url", "")
                 # AIHubMix 兼容 OpenAI Chat Completions 协议。这里使用独立
                 # provider 保存合作方的默认网关和推荐模型，避免把推广链接、
                 # 默认模型等合作配置混进普通 OpenAI provider，影响现有用户。
@@ -182,18 +183,18 @@ def _generate_response(prompt: str) -> str:
                 if not model_name:
                     model_name = "gpt-5.4-mini"
             elif llm_provider == "oneapi":
-                api_key = config.app.get("oneapi_api_key")
-                model_name = config.app.get("oneapi_model_name")
-                base_url = config.app.get("oneapi_base_url", "")
+                api_key = cfg("oneapi_api_key")
+                model_name = cfg("oneapi_model_name")
+                base_url = cfg("oneapi_base_url", "")
             elif llm_provider == "azure":
-                api_key = config.app.get("azure_api_key")
-                model_name = config.app.get("azure_model_name")
-                base_url = config.app.get("azure_base_url", "")
-                api_version = config.app.get("azure_api_version", "2024-02-15-preview")
+                api_key = cfg("azure_api_key")
+                model_name = cfg("azure_model_name")
+                base_url = cfg("azure_base_url", "")
+                api_version = cfg("azure_api_version", "2024-02-15-preview")
             elif llm_provider == "gemini":
-                api_key = config.app.get("gemini_api_key")
-                model_name = config.app.get("gemini_model_name")
-                base_url = config.app.get("gemini_base_url", "")
+                api_key = cfg("gemini_api_key")
+                model_name = cfg("gemini_model_name")
+                base_url = cfg("gemini_base_url", "")
                 # Gemini 旧模型名已经陆续下线，这里自动兼容历史配置，
                 # 避免用户沿用旧值时直接收到 404。
                 if not model_name:
@@ -204,36 +205,36 @@ def _generate_response(prompt: str) -> str:
                     )
                     model_name = _DEFAULT_GEMINI_MODEL
             elif llm_provider == "grok":
-                api_key = config.app.get("grok_api_key")
-                model_name = config.app.get("grok_model_name")
-                base_url = config.app.get("grok_base_url", "")
+                api_key = cfg("grok_api_key")
+                model_name = cfg("grok_model_name")
+                base_url = cfg("grok_base_url", "")
                 if not base_url:
                     base_url = "https://api.x.ai/v1"
             elif llm_provider == "groq":
-                api_key = config.app.get("groq_api_key")
-                model_name = config.app.get("groq_model_name")
-                base_url = config.app.get("groq_base_url", "")
+                api_key = cfg("groq_api_key")
+                model_name = cfg("groq_model_name")
+                base_url = cfg("groq_base_url", "")
                 if not base_url:
                     base_url = "https://api.groq.com/openai/v1"
             elif llm_provider == "qwen":
-                api_key = config.app.get("qwen_api_key")
-                model_name = config.app.get("qwen_model_name")
+                api_key = cfg("qwen_api_key")
+                model_name = cfg("qwen_model_name")
                 base_url = "***"
             elif llm_provider == "cloudflare":
-                api_key = config.app.get("cloudflare_api_key")
-                model_name = config.app.get("cloudflare_model_name")
-                account_id = config.app.get("cloudflare_account_id")
+                api_key = cfg("cloudflare_api_key")
+                model_name = cfg("cloudflare_model_name")
+                account_id = cfg("cloudflare_account_id")
                 base_url = "***"
             elif llm_provider == "minimax":
-                api_key = config.app.get("minimax_api_key")
-                model_name = config.app.get("minimax_model_name")
-                base_url = config.app.get("minimax_base_url", "")
+                api_key = cfg("minimax_api_key")
+                model_name = cfg("minimax_model_name")
+                base_url = cfg("minimax_base_url", "")
                 if not base_url:
                     base_url = "https://api.minimax.io/v1"
             elif llm_provider == "mimo":
-                api_key = config.app.get("mimo_api_key")
-                model_name = config.app.get("mimo_model_name")
-                base_url = config.app.get("mimo_base_url", "")
+                api_key = cfg("mimo_api_key")
+                model_name = cfg("mimo_model_name")
+                base_url = cfg("mimo_base_url", "")
                 # Xiaomi MiMo 官方文档说明其兼容 OpenAI Chat Completions 协议。
                 # 这里使用独立 provider 保存默认地址和模型名，用户不用把 MiMo
                 # 当作 OpenAI 自定义 base_url 配置，也便于后续继续接入 MiMo
@@ -243,21 +244,21 @@ def _generate_response(prompt: str) -> str:
                 if not model_name:
                     model_name = "mimo-v2.5-pro"
             elif llm_provider == "deepseek":
-                api_key = config.app.get("deepseek_api_key")
-                model_name = config.app.get("deepseek_model_name")
-                base_url = config.app.get("deepseek_base_url")
+                api_key = cfg("deepseek_api_key")
+                model_name = cfg("deepseek_model_name")
+                base_url = cfg("deepseek_base_url")
                 if not base_url:
                     base_url = "https://api.deepseek.com"
             elif llm_provider == "modelscope":
-                api_key = config.app.get("modelscope_api_key")
-                model_name = config.app.get("modelscope_model_name")
-                base_url = config.app.get("modelscope_base_url")
+                api_key = cfg("modelscope_api_key")
+                model_name = cfg("modelscope_model_name")
+                base_url = cfg("modelscope_base_url")
                 if not base_url:
                     base_url = "https://api-inference.modelscope.cn/v1/"
             elif llm_provider == "ernie":
-                api_key = config.app.get("ernie_api_key")
-                secret_key = config.app.get("ernie_secret_key")
-                base_url = config.app.get("ernie_base_url")
+                api_key = cfg("ernie_api_key")
+                secret_key = cfg("ernie_secret_key")
+                base_url = cfg("ernie_base_url")
                 model_name = "***"
                 if not secret_key:
                     raise ValueError(
@@ -265,10 +266,10 @@ def _generate_response(prompt: str) -> str:
                     )
             elif llm_provider == "pollinations":
                 try:
-                    base_url = config.app.get("pollinations_base_url", "")
+                    base_url = cfg("pollinations_base_url", "")
                     if not base_url:
                         base_url = "https://text.pollinations.ai/openai"
-                    model_name = config.app.get("pollinations_model_name", "openai-fast")
+                    model_name = cfg("pollinations_model_name", "openai-fast")
                    
                     # Prepare the payload
                     payload = {
@@ -280,10 +281,10 @@ def _generate_response(prompt: str) -> str:
                     }
                     
                     # Optional parameters if configured
-                    if config.app.get("pollinations_private"):
+                    if cfg("pollinations_private"):
                         payload["private"] = True
-                    if config.app.get("pollinations_referrer"):
-                        payload["referrer"] = config.app.get("pollinations_referrer")
+                    if cfg("pollinations_referrer"):
+                        payload["referrer"] = cfg("pollinations_referrer")
                     
                     headers = {
                         "Content-Type": "application/json"
@@ -306,7 +307,7 @@ def _generate_response(prompt: str) -> str:
                     raise Exception(f"[{llm_provider}] error: {str(e)}")
 
             elif llm_provider == "litellm":
-                model_name = config.app.get("litellm_model_name")
+                model_name = cfg("litellm_model_name")
 
             if llm_provider not in ["pollinations", "ollama", "litellm"]:  # Skip validation for providers that don't require API key
                 if not api_key:

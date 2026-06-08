@@ -2,6 +2,7 @@ import type {
   CreateJobInput,
   Job,
   JobList,
+  ProviderKey,
   TokenResponse,
   User,
 } from "./types";
@@ -109,6 +110,22 @@ export const api = {
 
   deleteJob: (id: string) =>
     request<{ data: unknown }>(`/jobs/${id}`, { method: "DELETE" }),
+
+  listKeys: () =>
+    request<{ data: { providers: Record<string, ProviderKey> } }>(
+      "/settings/keys",
+    ).then((b) => unwrap(b).providers),
+
+  saveKeys: (provider: string, fields: Record<string, string>) =>
+    request<{ data: unknown }>(`/settings/keys/${provider}`, {
+      method: "PUT",
+      body: JSON.stringify(fields),
+    }),
+
+  deleteKeys: (provider: string) =>
+    request<{ data: unknown }>(`/settings/keys/${provider}`, {
+      method: "DELETE",
+    }),
 };
 
 export { ApiError };

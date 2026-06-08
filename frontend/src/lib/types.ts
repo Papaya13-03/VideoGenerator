@@ -30,6 +30,11 @@ export interface JobList {
   page_size: number;
 }
 
+export interface ProviderKey {
+  configured: boolean;
+  fields: Record<string, string>;
+}
+
 // Maps 1:1 to the backend VideoParams subset the composer exposes.
 export interface CreateJobInput {
   video_subject: string;

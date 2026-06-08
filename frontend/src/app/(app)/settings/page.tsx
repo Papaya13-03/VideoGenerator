@@ -1,0 +1,179 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+
+type FieldDef = { name: string; label: string; type?: "select"; options?: string[] };
+
+const PROVIDERS: { id: string; title: string; hint: string; fields: FieldDef[] }[] = [
+  {
+    id: "pexels",
+    title: "Pexels",
+    hint: "API key(s) for video/image search. Comma-separate multiple keys.",
+    fields: [{ name: "api_keys", label: "API key(s)" }],
+  },
+  {
+    id: "pixabay",
+    title: "Pixabay",
+    hint: "API key(s) for video/image search.",
+    fields: [{ name: "api_keys", label: "API key(s)" }],
+  },
+  {
+    id: "llm",
+    title: "LLM (script & terms)",
+    hint: "Provider used to generate the script and search terms.",
+    fields: [
+      {
+        name: "provider",
+        label: "Provider",
+        type: "select",
+        options: ["openai", "groq", "gemini", "moonshot", "deepseek", "qwen", "azure", "oneapi"],
+      },
+      { name: "api_key", label: "API key" },
+      { name: "base_url", label: "Base URL (optional)" },
+      { name: "model_name", label: "Model name (optional)" },
+    ],
+  },
+  {
+    id: "tts",
+    title: "TTS (voiceover)",
+    hint: "Edge (default) needs no key. Azure needs a speech key + region.",
+    fields: [
+      { name: "provider", label: "Provider", type: "select", options: ["edge", "azure"] },
+      { name: "api_key", label: "Azure speech key" },
+      { name: "region", label: "Azure region" },
+    ],
+  },
+];
+
+function ProviderCard({
+  def,
+  initial,
+  configured,
+  onSaved,
+}: {
+  def: (typeof PROVIDERS)[number];
+  initial: Record<string, string>;
+  configured: boolean;
+  onSaved: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    setValues(initial || {});
+  }, [initial]);
+
+  async function save() {
+    setBusy(true);
+    setMsg("");
+    try {
+      await api.saveKeys(def.id, values);
+      setMsg("Saved ✓");
+      onSaved();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    await api.deleteKeys(def.id);
+    setValues({});
+    onSaved();
+    setBusy(false);
+  }
+
+  const input =
+    "w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-neutral-500";
+
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-medium">{def.title}</h2>
+        {configured && (
+          <span className="rounded-full bg-emerald-600/30 px-2 py-0.5 text-xs text-emerald-300">
+            configured
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-neutral-500">{def.hint}</p>
+      {def.fields.map((f) => (
+        <div key={f.name} className="space-y-1">
+          <label className="text-xs text-neutral-400">{f.label}</label>
+          {f.type === "select" ? (
+            <select
+              value={values[f.name] || ""}
+              onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+              className={input}
+            >
+              <option value="">—</option>
+              {f.options!.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={values[f.name] || ""}
+              onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+              placeholder={f.label}
+              className={input}
+            />
+          )}
+        </div>
+      ))}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={busy}
+          className="rounded-md bg-indigo-600 px-4 py-2 text-sm hover:bg-indigo-500 disabled:opacity-50"
+        >
+          Save
+        </button>
+        {configured && (
+          <button onClick={remove} disabled={busy} className="text-sm text-red-400 hover:text-red-300">
+            Remove
+          </button>
+        )}
+        {msg && <span className="text-xs text-neutral-400">{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
+export default function SettingsPage() {
+  const { data, refetch, isLoading } = useQuery({
+    queryKey: ["keys"],
+    queryFn: () => api.listKeys(),
+  });
+
+  if (isLoading) return <p className="text-neutral-400">Loading...</p>;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-semibold">API keys</h1>
+        <p className="text-sm text-neutral-500">
+          Your keys are stored encrypted and used only for your own renders.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {PROVIDERS.map((def) => (
+          <ProviderCard
+            key={def.id}
+            def={def}
+            configured={data?.[def.id]?.configured ?? false}
+            initial={data?.[def.id]?.fields ?? {}}
+            onSaved={refetch}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

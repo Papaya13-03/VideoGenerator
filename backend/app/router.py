@@ -9,7 +9,7 @@ Resources:
 
 from fastapi import APIRouter
 
-from app.controllers.v1 import auth, jobs, llm, video
+from app.controllers.v1 import auth, jobs, llm, settings, video
 
 root_api_router = APIRouter()
 # v1
@@ -17,3 +17,4 @@ root_api_router.include_router(video.router)
 root_api_router.include_router(llm.router)
 root_api_router.include_router(auth.router)
 root_api_router.include_router(jobs.router)
+root_api_router.include_router(settings.router)

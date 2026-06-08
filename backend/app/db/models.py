@@ -2,7 +2,16 @@
 
 import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -56,3 +65,18 @@ class Asset(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     job: Mapped["Job"] = relationship(back_populates="assets")
+
+
+class ProviderCredential(Base):
+    """Per-user API credentials for a provider, stored encrypted at rest."""
+
+    __tablename__ = "provider_credentials"
+    __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_user_provider"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)  # pexels|pixabay|llm|tts
+    data_enc: Mapped[str] = mapped_column(Text, nullable=False)  # encrypted JSON blob
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
