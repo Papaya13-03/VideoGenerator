@@ -1,6 +1,7 @@
 """Per-user uploaded assets — currently music tracks for beat-sync."""
 
 import os
+import shutil
 import tempfile
 
 from fastapi import Depends, File, Path, UploadFile
@@ -54,10 +55,13 @@ def upload_music(
     # Buffer to a temp file, then hand off to the storage backend.
     tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
     try:
-        tmp.write(file.file.read())
+        file.file.seek(0)
+        shutil.copyfileobj(file.file, tmp)
         tmp.flush()
         tmp.close()
         size = os.path.getsize(tmp.name)
+        if size == 0:
+            raise HttpException(task_id="", status_code=400, message="uploaded file is empty")
         storage = get_storage()
         storage.upload_file(tmp.name, key)
         url = storage.url_for(key)
