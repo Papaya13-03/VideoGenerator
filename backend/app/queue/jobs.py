@@ -93,10 +93,39 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def _resolve_music_asset(params: "VideoParams", user_id: str) -> None:
+    """If the job references a user-uploaded music asset, fetch it into resource/songs
+    and point params.music_file at it (so the sandboxed get_bgm_file accepts it)."""
+    asset_id = getattr(params, "music_asset_id", None)
+    if not asset_id:
+        return
+    try:
+        from app.db.models import Asset
+        from app.db.session import SessionLocal
+        from app.storage import get_storage
+
+        with SessionLocal() as db:
+            asset = db.get(Asset, asset_id)
+            if not asset or asset.user_id != user_id or asset.kind != "music":
+                logger.warning(f"music asset {asset_id} not found/owned; ignoring")
+                return
+            song_dir = utils.song_dir()
+            os.makedirs(song_dir, exist_ok=True)
+            local_name = f"user-{asset_id}.mp3"
+            local_path = os.path.join(song_dir, local_name)
+            if not os.path.exists(local_path):
+                get_storage().download_file(asset.storage_key, local_path)
+            params.music_file = local_name
+            logger.info(f"resolved user music asset {asset_id} -> {local_name}")
+    except Exception as e:
+        logger.error(f"failed to resolve music asset {asset_id}: {e}")
+
+
 def _run_pipeline(task_id: str, params: "VideoParams", stop_at: str, user_id: str):
     """Run the pipeline with the user's API keys layered over the global config."""
     from app.services import credentials
 
+    _resolve_music_asset(params, user_id)
     overrides = credentials.load_user_overrides(user_id)
     token = credentials.set_overrides(overrides)
     try:

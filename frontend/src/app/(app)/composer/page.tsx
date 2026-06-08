@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { CreateJobInput } from "@/lib/types";
 
@@ -21,6 +22,13 @@ export default function ComposerPage() {
   const [scriptPrompt, setScriptPrompt] = useState("");
   const [script, setScript] = useState("");
   const [terms, setTerms] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  // User's uploaded music library.
+  const { data: tracks, refetch: refetchMusic } = useQuery({
+    queryKey: ["music"],
+    queryFn: () => api.listMusic(),
+  });
 
   const [form, setForm] = useState<CreateJobInput>({
     video_subject: "",
@@ -31,8 +39,26 @@ export default function ComposerPage() {
     material_types: ["video", "image"],
     voiceover_enabled: false,
     music_file: "",
+    music_asset_id: "",
     video_source: "pexels",
   });
+
+  async function onUploadMusic(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setUploading(true);
+    try {
+      const asset = await api.uploadMusic(f);
+      await refetchMusic();
+      set("music_asset_id", asset.id); // auto-select the just-uploaded track
+      set("music_file", "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
 
   function set<K extends keyof CreateJobInput>(k: K, v: CreateJobInput[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -221,12 +247,32 @@ export default function ComposerPage() {
               onChange={(e) => set("beats_per_segment", Number(e.target.value))}
               className="w-full"
             />
-            <input
-              value={form.music_file}
-              onChange={(e) => set("music_file", e.target.value)}
-              placeholder="Music file (in resource/songs), blank = random BGM"
+            <label className="text-xs text-neutral-400">Music track</label>
+            <select
+              value={form.music_asset_id || ""}
+              onChange={(e) => {
+                set("music_asset_id", e.target.value);
+                set("music_file", "");
+              }}
               className={inputCls}
-            />
+            >
+              <option value="">Random BGM (shared library)</option>
+              {(tracks ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:border-neutral-500">
+              {uploading ? "Uploading..." : "⬆ Upload your music (.mp3)"}
+              <input
+                type="file"
+                accept="audio/mpeg,.mp3"
+                className="hidden"
+                onChange={onUploadMusic}
+                disabled={uploading}
+              />
+            </label>
           </div>
         )}
       </div>

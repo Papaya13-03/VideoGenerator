@@ -58,7 +58,8 @@ class Asset(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=False)
     job_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("jobs.id"), index=True, nullable=True)
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # final_video|combined_video|audio|subtitle
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # final_video|combined_video|audio|subtitle|music
+    name: Mapped[str] = mapped_column(String(255), default="", nullable=False)  # display name (e.g. uploaded filename)
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
     url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)

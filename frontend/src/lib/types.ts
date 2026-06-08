@@ -35,6 +35,13 @@ export interface ProviderKey {
   fields: Record<string, string>;
 }
 
+export interface MusicAsset {
+  id: string;
+  name: string;
+  url: string;
+  kind: string;
+}
+
 // Maps 1:1 to the backend VideoParams subset the composer exposes.
 export interface CreateJobInput {
   video_subject: string;
@@ -49,5 +56,6 @@ export interface CreateJobInput {
   material_types: string[];
   voiceover_enabled: boolean;
   music_file?: string;
+  music_asset_id?: string; // user-uploaded track
   video_source: "pexels" | "pixabay";
 }

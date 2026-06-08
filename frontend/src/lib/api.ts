@@ -2,6 +2,7 @@ import type {
   CreateJobInput,
   Job,
   JobList,
+  MusicAsset,
   ProviderKey,
   TokenResponse,
   User,
@@ -129,6 +130,30 @@ export const api = {
     request<{ data: unknown }>(`/settings/keys/${provider}`, {
       method: "DELETE",
     }),
+
+  listMusic: () =>
+    request<{ data: { music: MusicAsset[] } }>("/assets/music").then(
+      (b) => unwrap(b).music,
+    ),
+
+  uploadMusic: async (file: File): Promise<MusicAsset> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    // Multipart: let the browser set the Content-Type (boundary), so bypass request().
+    const res = await fetch(`${API_BASE}/assets/music`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    const text = await res.text();
+    const body = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new ApiError(res.status, body?.message || res.statusText);
+    return body.data as MusicAsset;
+  },
+
+  deleteAsset: (id: string) =>
+    request<{ data: unknown }>(`/assets/${id}`, { method: "DELETE" }),
 };
 
 export { ApiError };

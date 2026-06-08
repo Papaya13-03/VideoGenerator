@@ -97,7 +97,8 @@ class VideoParams(BaseModel):
     material_types: Optional[List[str]] = Field(default_factory=lambda: ["video"])
     beat_sync_enabled: Optional[bool] = False
     beats_per_segment: Optional[int] = Field(default=4, ge=1, le=16)
-    music_file: Optional[str] = None  # Music track used as the beat-sync timeline
+    music_file: Optional[str] = None  # Music track filename in resource/songs (beat-sync timeline)
+    music_asset_id: Optional[str] = None  # User-uploaded music asset id; worker fetches it
     image_clip_duration: Optional[int] = 4  # Hold duration when converting an image to a clip
     voiceover_enabled: Optional[bool] = True  # Disable for a music-only montage (no narration)
 
