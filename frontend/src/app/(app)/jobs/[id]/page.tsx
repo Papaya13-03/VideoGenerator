@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -8,8 +9,9 @@ import { ProgressBar, StatusBadge } from "@/components/JobStatus";
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const [recovering, setRecovering] = useState(false);
 
-  const { data: job, isLoading } = useQuery({
+  const { data: job, isLoading, refetch } = useQuery({
     queryKey: ["job", id],
     queryFn: () => api.getJob(id),
     // Keep polling until the job reaches a terminal state.
@@ -26,6 +28,16 @@ export default function JobDetailPage() {
   async function remove() {
     await api.deleteJob(id);
     router.push("/jobs");
+  }
+
+  async function recover() {
+    setRecovering(true);
+    try {
+      await api.recoverJob(id);
+      await refetch();
+    } finally {
+      setRecovering(false);
+    }
   }
 
   return (
@@ -51,6 +63,18 @@ export default function JobDetailPage() {
           {job.error || "Render failed."}
         </p>
       )}
+
+      {/* Recover a job whose render finished on disk but timed out before upload. */}
+      {(job.status === "processing" || job.status === "failed") &&
+        (job.storage_urls?.videos?.length ?? 0) === 0 && (
+          <button
+            onClick={recover}
+            disabled={recovering}
+            className="rounded-md border border-amber-700 bg-amber-600/20 px-4 py-2 text-sm text-amber-300 hover:bg-amber-600/30 disabled:opacity-50"
+          >
+            {recovering ? "Recovering..." : "Recover output (if already rendered)"}
+          </button>
+        )}
 
       {job.status === "complete" && videos.length > 0 && (
         <div className="space-y-4">

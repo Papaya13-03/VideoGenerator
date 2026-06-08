@@ -111,6 +111,9 @@ export const api = {
   deleteJob: (id: string) =>
     request<{ data: unknown }>(`/jobs/${id}`, { method: "DELETE" }),
 
+  recoverJob: (id: string) =>
+    request<{ data: unknown }>(`/jobs/${id}/recover`, { method: "POST" }),
+
   listKeys: () =>
     request<{ data: { providers: Record<string, ProviderKey> } }>(
       "/settings/keys",

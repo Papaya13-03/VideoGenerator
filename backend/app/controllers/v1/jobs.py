@@ -111,3 +111,65 @@ def delete_job(
     db.commit()
     sm.state.delete_task(job_id)
     return utils.get_response(200, {"id": job_id, "deleted": True})
+
+
+@router.post("/jobs/{job_id}/recover", summary="Recover a stuck job from its on-disk output")
+def recover_job(
+    job_id: str = Path(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Finalize a job whose render finished on disk but never got uploaded/marked complete
+    (e.g. the worker timed out while the orphaned render thread kept running).
+    Uploads existing final/combined files to storage and marks the job complete,
+    or marks it failed if no output is found."""
+    import glob
+    import os
+
+    from app.db.models import Asset
+    from app.storage import get_storage
+
+    job = _get_owned_job(db, current_user, job_id)
+    task_dir = utils.task_dir(job_id)
+    finals = sorted(glob.glob(os.path.join(task_dir, "final-*.mp4")))
+    combined = sorted(glob.glob(os.path.join(task_dir, "combined-*.mp4")))
+
+    if not finals:
+        job.status = "failed"
+        job.error = "no output found on disk to recover"
+        db.commit()
+        return utils.get_response(200, {"id": job_id, "recovered": False, "status": "failed"})
+
+    storage = get_storage()
+    storage_urls = {"videos": [], "combined_videos": []}
+    for kind, paths, field in (
+        ("final_video", finals, "videos"),
+        ("combined_video", combined, "combined_videos"),
+    ):
+        for p in paths:
+            key = f"users/{current_user.id}/tasks/{job_id}/{os.path.basename(p)}"
+            try:
+                storage.upload_file(p, key)
+                url = storage.url_for(key)
+                storage_urls[field].append(url)
+                db.add(
+                    Asset(
+                        id=utils.get_uuid(),
+                        user_id=current_user.id,
+                        job_id=job_id,
+                        kind=kind,
+                        storage_key=key,
+                        url=url,
+                        size_bytes=os.path.getsize(p),
+                    )
+                )
+            except Exception as e:
+                raise HttpException(task_id=job_id, status_code=500, message=f"recover upload failed: {e}")
+
+    job.status = "complete"
+    job.progress = 100
+    db.commit()
+    sm.state.update_task(job_id, storage_urls=storage_urls)
+    return utils.get_response(
+        200, {"id": job_id, "recovered": True, "status": "complete", "storage_urls": storage_urls}
+    )
