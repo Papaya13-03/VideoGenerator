@@ -1,7 +1,6 @@
 """Per-user uploaded assets — currently music tracks for beat-sync."""
 
 import os
-import shutil
 import tempfile
 
 from fastapi import Depends, File, Path, UploadFile
@@ -39,7 +38,7 @@ def list_music(
 
 
 @router.post("/assets/music", summary="Upload a music track")
-def upload_music(
+async def upload_music(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -49,19 +48,22 @@ def upload_music(
     if ext not in _ALLOWED_MUSIC_EXT:
         raise HttpException(task_id="", status_code=400, message="only .mp3 is supported")
 
+    # Read via the async API: it reliably returns the full content regardless of the
+    # underlying spooled-file position (sync .file.read() can return empty after parsing).
+    content = await file.read()
+    if not content:
+        raise HttpException(task_id="", status_code=400, message="uploaded file is empty")
+
     asset_id = utils.get_uuid()
     key = f"users/{current_user.id}/music/{asset_id}.mp3"
 
     # Buffer to a temp file, then hand off to the storage backend.
     tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
     try:
-        file.file.seek(0)
-        shutil.copyfileobj(file.file, tmp)
+        tmp.write(content)
         tmp.flush()
         tmp.close()
         size = os.path.getsize(tmp.name)
-        if size == 0:
-            raise HttpException(task_id="", status_code=400, message="uploaded file is empty")
         storage = get_storage()
         storage.upload_file(tmp.name, key)
         url = storage.url_for(key)
