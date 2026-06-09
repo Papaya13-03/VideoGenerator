@@ -133,6 +133,62 @@ def fixed_interval_boundaries(
     return out
 
 
+def segments_from_cut_points(
+    cut_points: List[float], total_duration: float
+) -> List[Tuple[float, float]]:
+    """Build contiguous segments from user-edited cut points (scene-change times)."""
+    pts = [0.0] + sorted(p for p in cut_points if 0.0 < p < total_duration) + [float(total_duration)]
+    return [(pts[i], pts[i + 1]) for i in range(len(pts) - 1) if pts[i + 1] > pts[i]]
+
+
+def _cut_points_from_segments(segments: List[Tuple[float, float]]) -> List[float]:
+    """Internal boundaries between segments (exclude 0 and total)."""
+    return [round(end, 3) for (_s, end), _nxt in zip(segments, segments[1:])]
+
+
+def _audio_duration(audio_file: str) -> float:
+    try:
+        librosa = _import_librosa()
+        return float(librosa.get_duration(path=audio_file))
+    except Exception:
+        from moviepy import AudioFileClip
+
+        clip = AudioFileClip(audio_file)
+        try:
+            return float(clip.duration)
+        finally:
+            clip.close()
+
+
+def analyze_music(audio_file: str, beats_per_segment: int = 4) -> dict:
+    """Analyze a track for the beat editor.
+
+    Returns {duration, tempo, beats, cut_points, used_beats}. Falls back to fixed
+    intervals (used_beats=False) if librosa is unavailable or detection fails.
+    """
+    duration = _audio_duration(audio_file)
+    try:
+        tempo, beats = detect_beats(audio_file)
+        segments = compute_segment_boundaries(beats, duration, beats_per_segment=beats_per_segment)
+        return {
+            "duration": round(duration, 3),
+            "tempo": round(tempo, 1),
+            "beats": [round(b, 3) for b in beats],
+            "cut_points": _cut_points_from_segments(segments),
+            "used_beats": True,
+        }
+    except (BeatDetectionUnavailable, BeatDetectionError) as e:
+        logger.warning(f"analyze_music fallback: {e}")
+        segments = fixed_interval_boundaries(duration)
+        return {
+            "duration": round(duration, 3),
+            "tempo": 0.0,
+            "beats": [],
+            "cut_points": _cut_points_from_segments(segments),
+            "used_beats": False,
+        }
+
+
 def get_segment_boundaries(
     music_file: str,
     total_duration: float,

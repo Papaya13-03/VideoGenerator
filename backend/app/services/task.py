@@ -294,6 +294,7 @@ def generate_final_videos(
                 video_transition_mode=video_transition_mode,
                 beats_per_segment=getattr(params, "beats_per_segment", 4),
                 threads=params.n_threads,
+                cut_points=getattr(params, "cut_points", None),
             )
         else:
             video.combine_videos(

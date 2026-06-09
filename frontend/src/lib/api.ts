@@ -1,4 +1,5 @@
 import type {
+  BeatAnalysis,
   CreateJobInput,
   Job,
   JobList,
@@ -154,6 +155,11 @@ export const api = {
 
   deleteAsset: (id: string) =>
     request<{ data: unknown }>(`/assets/${id}`, { method: "DELETE" }),
+
+  getBeats: (assetId: string, beatsPerSegment = 4) =>
+    request<{ data: BeatAnalysis }>(
+      `/assets/music/${assetId}/beats?beats_per_segment=${beatsPerSegment}`,
+    ).then((b) => unwrap(b)),
 };
 
 export { ApiError };

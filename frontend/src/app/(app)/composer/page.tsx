@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { CreateJobInput } from "@/lib/types";
+import { BeatEditor } from "@/components/BeatEditor";
 
 const ASPECTS = [
   { value: "9:16", label: "Portrait 9:16" },
@@ -40,6 +41,7 @@ export default function ComposerPage() {
     voiceover_enabled: false,
     music_file: "",
     music_asset_id: "",
+    cut_points: [],
     video_source: "pexels",
   });
 
@@ -52,6 +54,7 @@ export default function ComposerPage() {
       await refetchMusic();
       set("music_asset_id", asset.id); // auto-select the just-uploaded track
       set("music_file", "");
+      set("cut_points", []); // reset cuts for the new track
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -253,6 +256,7 @@ export default function ComposerPage() {
               onChange={(e) => {
                 set("music_asset_id", e.target.value);
                 set("music_file", "");
+                set("cut_points", []);
               }}
               className={inputCls}
             >
@@ -273,6 +277,27 @@ export default function ComposerPage() {
                 disabled={uploading}
               />
             </label>
+
+            {/* Beat editor: edit the scene-change times for the selected track. */}
+            {(() => {
+              const track = (tracks ?? []).find((t) => t.id === form.music_asset_id);
+              if (!track) {
+                return (
+                  <p className="text-[11px] text-neutral-500">
+                    Select or upload a track to edit its scene-change beats.
+                  </p>
+                );
+              }
+              return (
+                <BeatEditor
+                  assetId={track.id}
+                  audioUrl={track.url}
+                  beatsPerSegment={form.beats_per_segment}
+                  cutPoints={form.cut_points ?? []}
+                  onChange={(cp) => set("cut_points", cp)}
+                />
+              );
+            })()}
           </div>
         )}
       </div>

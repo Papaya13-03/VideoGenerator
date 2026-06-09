@@ -42,6 +42,14 @@ export interface MusicAsset {
   kind: string;
 }
 
+export interface BeatAnalysis {
+  duration: number;
+  tempo: number;
+  beats: number[];
+  cut_points: number[];
+  used_beats: boolean;
+}
+
 // Maps 1:1 to the backend VideoParams subset the composer exposes.
 export interface CreateJobInput {
   video_subject: string;
@@ -57,5 +65,6 @@ export interface CreateJobInput {
   voiceover_enabled: boolean;
   music_file?: string;
   music_asset_id?: string; // user-uploaded track
+  cut_points?: number[]; // user-edited scene-change times (seconds)
   video_source: "pexels" | "pixabay";
 }

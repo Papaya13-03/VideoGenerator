@@ -61,6 +61,41 @@ def test_upload_list_delete_music(client):
     assert client.get("/api/v1/assets/music", headers=_auth(t)).json()["data"]["music"] == []
 
 
+def test_analyze_beats(client, monkeypatch):
+    t = _token(client, "beat@e.com")
+    files = {"file": ("song.mp3", b"fake-mp3-bytes", "audio/mpeg")}
+    aid = client.post("/api/v1/assets/music", headers=_auth(t), files=files).json()["data"]["id"]
+
+    # Stub analysis so the test doesn't need a real audio decoder.
+    from app.services import audio_analysis
+
+    monkeypatch.setattr(
+        audio_analysis,
+        "analyze_music",
+        lambda path, beats_per_segment=4: {
+            "duration": 8.0,
+            "tempo": 120.0,
+            "beats": [0.5, 1.0, 1.5],
+            "cut_points": [2.0, 4.0, 6.0],
+            "used_beats": True,
+        },
+    )
+    r = client.get(f"/api/v1/assets/music/{aid}/beats?beats_per_segment=4", headers=_auth(t))
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["duration"] == 8.0
+    assert data["cut_points"] == [2.0, 4.0, 6.0]
+    assert data["used_beats"] is True
+
+
+def test_analyze_beats_other_user_404(client):
+    ta = _token(client, "o1@e.com")
+    tb = _token(client, "o2@e.com")
+    files = {"file": ("s.mp3", b"x", "audio/mpeg")}
+    aid = client.post("/api/v1/assets/music", headers=_auth(ta), files=files).json()["data"]["id"]
+    assert client.get(f"/api/v1/assets/music/{aid}/beats", headers=_auth(tb)).status_code == 404
+
+
 def test_reject_non_mp3(client):
     t = _token(client)
     files = {"file": ("evil.wav", b"x", "audio/wav")}

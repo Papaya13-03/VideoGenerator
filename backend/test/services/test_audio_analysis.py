@@ -56,6 +56,19 @@ def test_get_segment_boundaries_falls_back_without_librosa(monkeypatch):
     _covers(segs, 8.0)
 
 
+def test_segments_from_cut_points():
+    segs = aa.segments_from_cut_points([2.0, 5.0, 9.0], 10.0)
+    _covers(segs, 10.0)
+    assert [round(s, 1) for s, _ in segs] == [0.0, 2.0, 5.0, 9.0]
+
+
+def test_segments_from_cut_points_ignores_out_of_range_and_unsorted():
+    segs = aa.segments_from_cut_points([9.0, -1.0, 2.0, 99.0], 10.0)
+    _covers(segs, 10.0)
+    # only 2.0 and 9.0 are valid internal boundaries, sorted
+    assert [round(s, 1) for s, _ in segs] == [0.0, 2.0, 9.0]
+
+
 def test_voiceover_longer_than_music_total_duration():
     # total_duration exceeds the last beat -> segments still cover up to total_duration.
     beats = [i * 0.5 for i in range(9)]  # up to 4.0s

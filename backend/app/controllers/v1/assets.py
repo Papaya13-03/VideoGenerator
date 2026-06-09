@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-from fastapi import Depends, File, Path, UploadFile
+from fastapi import Depends, File, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -86,6 +86,34 @@ async def upload_music(
     db.add(asset)
     db.commit()
     return utils.get_response(200, _asset_dict(asset))
+
+
+@router.get("/assets/music/{asset_id}/beats", summary="Analyze a track's beats / cut points")
+def analyze_music_beats(
+    asset_id: str = Path(...),
+    beats_per_segment: int = Query(4, ge=1, le=16),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    asset = db.get(Asset, asset_id)
+    if asset is None or asset.user_id != current_user.id or asset.kind != "music":
+        raise HttpException(task_id=asset_id, status_code=404, message="music not found")
+
+    from app.services import audio_analysis
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    tmp.close()
+    try:
+        get_storage().download_file(asset.storage_key, tmp.name)
+        result = audio_analysis.analyze_music(tmp.name, beats_per_segment=beats_per_segment)
+    except Exception as e:
+        raise HttpException(task_id=asset_id, status_code=500, message=f"analyze failed: {e}")
+    finally:
+        try:
+            os.remove(tmp.name)
+        except OSError:
+            pass
+    return utils.get_response(200, result)
 
 
 @router.delete("/assets/{asset_id}", summary="Delete an uploaded asset")

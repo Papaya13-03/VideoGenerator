@@ -754,12 +754,16 @@ def combine_videos_beatsync(
     video_transition_mode: VideoTransitionMode = None,
     beats_per_segment: int = 4,
     threads: int = 2,
+    cut_points: list = None,
 ) -> str:
     """Assemble materials (.mp4) in sync with the beats of `music_file`.
 
     Each segment (boundary = beat) is cut/looped to match its length exactly, so the
     cut points land on beats. Music is the timeline; `audio_file` (voiceover) is only
     used to extend the total duration if it is longer than the music.
+
+    If `cut_points` (user-edited scene-change times) is provided, it overrides automatic
+    beat detection and the segments are built from those exact times.
     """
     if not material_paths:
         logger.warning("no materials for beat-sync combine")
@@ -778,13 +782,21 @@ def combine_videos_beatsync(
         finally:
             close_clip(vo)
 
-    # 2. Segment boundaries from beats (auto fallback to fixed interval if librosa is missing).
-    segments, used_beats = audio_analysis.get_segment_boundaries(
-        music_file, total_duration, beats_per_segment=beats_per_segment
-    )
-    logger.info(
-        f"beat-sync: {len(segments)} segments, used_beats={used_beats}, total={total_duration:.2f}s"
-    )
+    # 2. Segment boundaries: user-edited cut points if given, else auto beat detection
+    #    (which falls back to fixed interval when librosa is unavailable).
+    if cut_points:
+        segments = audio_analysis.segments_from_cut_points(cut_points, total_duration)
+        logger.info(
+            f"beat-sync: {len(segments)} segments from {len(cut_points)} custom cut points, "
+            f"total={total_duration:.2f}s"
+        )
+    else:
+        segments, used_beats = audio_analysis.get_segment_boundaries(
+            music_file, total_duration, beats_per_segment=beats_per_segment
+        )
+        logger.info(
+            f"beat-sync: {len(segments)} segments, used_beats={used_beats}, total={total_duration:.2f}s"
+        )
 
     transition_value = getattr(video_transition_mode, "value", video_transition_mode)
     output_dir = os.path.dirname(combined_video_path)
