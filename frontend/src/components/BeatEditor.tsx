@@ -9,6 +9,9 @@ interface Props {
   beatsPerSegment: number;
   cutPoints: number[];
   onChange: (cutPoints: number[]) => void;
+  trimStart: number;
+  trimEnd: number; // 0 = until the end of the track
+  onTrimChange: (start: number, end: number) => void;
 }
 
 const fmt = (s: number) => {
@@ -17,7 +20,16 @@ const fmt = (s: number) => {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 };
 
-export function BeatEditor({ assetId, audioUrl, beatsPerSegment, cutPoints, onChange }: Props) {
+export function BeatEditor({
+  assetId,
+  audioUrl,
+  beatsPerSegment,
+  cutPoints,
+  onChange,
+  trimStart,
+  trimEnd,
+  onTrimChange,
+}: Props) {
   const [duration, setDuration] = useState(0);
   const [beats, setBeats] = useState<number[]>([]);
   const [tempo, setTempo] = useState(0);
@@ -26,7 +38,10 @@ export function BeatEditor({ assetId, audioUrl, beatsPerSegment, cutPoints, onCh
   const audioRef = useRef<HTMLAudioElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const dragIdx = useRef<number | null>(null);
+  const dragTrim = useRef<"start" | "end" | null>(null);
   const moved = useRef(false);
+
+  const effEnd = trimEnd && trimEnd > 0 ? trimEnd : duration;
 
   const analyze = useCallback(
     async (apply: boolean) => {
@@ -71,18 +86,28 @@ export function BeatEditor({ assetId, audioUrl, beatsPerSegment, cutPoints, onCh
     onChange(cutPoints.filter((c) => c !== value));
   }
 
-  // Drag a marker.
+  // Drag a cut marker or a trim handle.
   useEffect(() => {
     function onMove(e: PointerEvent) {
+      const t = timeFromClientX(e.clientX);
+      if (dragTrim.current) {
+        moved.current = true;
+        if (dragTrim.current === "start") {
+          onTrimChange(Math.min(t, effEnd - 0.1), trimEnd);
+        } else {
+          onTrimChange(trimStart, Math.max(t, trimStart + 0.1));
+        }
+        return;
+      }
       if (dragIdx.current === null) return;
       moved.current = true;
-      const t = timeFromClientX(e.clientX);
       const next = [...sorted];
       next[dragIdx.current] = Math.min(duration - 0.05, Math.max(0.05, t));
       onChange(next);
     }
     function onUp() {
       dragIdx.current = null;
+      dragTrim.current = null;
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -91,7 +116,7 @@ export function BeatEditor({ assetId, audioUrl, beatsPerSegment, cutPoints, onCh
       window.removeEventListener("pointerup", onUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sorted, duration]);
+  }, [sorted, duration, trimStart, trimEnd, effEnd]);
 
   return (
     <div className="space-y-2 rounded-md border border-neutral-700 bg-neutral-800/50 p-3">
@@ -99,7 +124,7 @@ export function BeatEditor({ assetId, audioUrl, beatsPerSegment, cutPoints, onCh
         <span>
           Scene cuts: {cutPoints.length}
           {tempo ? ` · ~${Math.round(tempo)} BPM` : ""}
-          {duration ? ` · ${fmt(duration)}` : ""}
+          {duration ? ` · clip ${fmt(trimStart)}–${fmt(effEnd)} (${fmt(Math.max(0, effEnd - trimStart))})` : ""}
         </span>
         <button
           type="button"
@@ -134,6 +159,40 @@ export function BeatEditor({ assetId, audioUrl, beatsPerSegment, cutPoints, onCh
         }}
         className="relative h-16 w-full cursor-copy rounded bg-neutral-900"
       >
+        {/* trimmed-away regions (dimmed) + trim handles */}
+        {duration > 0 && (
+          <>
+            <div
+              className="pointer-events-none absolute top-0 h-full bg-black/60"
+              style={{ left: 0, width: `${(trimStart / duration) * 100}%` }}
+            />
+            <div
+              className="pointer-events-none absolute top-0 h-full bg-black/60"
+              style={{ left: `${(effEnd / duration) * 100}%`, right: 0 }}
+            />
+            <div
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                dragTrim.current = "start";
+                moved.current = false;
+              }}
+              title={`Trim start ${fmt(trimStart)} — drag`}
+              className="absolute top-0 z-10 h-full w-1.5 cursor-ew-resize bg-amber-400"
+              style={{ left: `${(trimStart / duration) * 100}%` }}
+            />
+            <div
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                dragTrim.current = "end";
+                moved.current = false;
+              }}
+              title={`Trim end ${fmt(effEnd)} — drag`}
+              className="absolute top-0 z-10 h-full w-1.5 cursor-ew-resize bg-amber-400"
+              style={{ left: `${(effEnd / duration) * 100}%`, transform: "translateX(-100%)" }}
+            />
+          </>
+        )}
+
         {/* detected beat ticks (guides) */}
         {duration > 0 &&
           beats.map((b, i) => (
@@ -188,8 +247,8 @@ export function BeatEditor({ assetId, audioUrl, beatsPerSegment, cutPoints, onCh
       </div>
 
       <p className="text-[11px] text-neutral-500">
-        Click the bar to add a cut · drag a marker to move · double-click (or ×) to delete.
-        Each scene change lands on these times.
+        Drag the amber handles to trim the music · click the bar to add a cut · drag a
+        marker to move · double-click (or ×) to delete. Only the trimmed range is used.
       </p>
     </div>
   );

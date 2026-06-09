@@ -66,5 +66,7 @@ export interface CreateJobInput {
   music_file?: string;
   music_asset_id?: string; // user-uploaded track
   cut_points?: number[]; // user-edited scene-change times (seconds)
+  music_start?: number; // trim window start (seconds)
+  music_end?: number; // trim window end (seconds); 0 = until the end
   video_source: "pexels" | "pixabay";
 }

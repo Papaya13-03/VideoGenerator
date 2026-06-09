@@ -42,6 +42,8 @@ export default function ComposerPage() {
     music_file: "",
     music_asset_id: "",
     cut_points: [],
+    music_start: 0,
+    music_end: 0,
     video_source: "pexels",
   });
 
@@ -55,6 +57,8 @@ export default function ComposerPage() {
       set("music_asset_id", asset.id); // auto-select the just-uploaded track
       set("music_file", "");
       set("cut_points", []); // reset cuts for the new track
+      set("music_start", 0);
+      set("music_end", 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -257,6 +261,8 @@ export default function ComposerPage() {
                 set("music_asset_id", e.target.value);
                 set("music_file", "");
                 set("cut_points", []);
+                set("music_start", 0);
+                set("music_end", 0);
               }}
               className={inputCls}
             >
@@ -295,6 +301,12 @@ export default function ComposerPage() {
                   beatsPerSegment={form.beats_per_segment}
                   cutPoints={form.cut_points ?? []}
                   onChange={(cp) => set("cut_points", cp)}
+                  trimStart={form.music_start ?? 0}
+                  trimEnd={form.music_end ?? 0}
+                  onTrimChange={(s, e) => {
+                    set("music_start", s);
+                    set("music_end", e);
+                  }}
                 />
               );
             })()}

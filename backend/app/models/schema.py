@@ -99,6 +99,9 @@ class VideoParams(BaseModel):
     beats_per_segment: Optional[int] = Field(default=4, ge=1, le=16)
     # User-edited scene-change times (seconds). When set, override auto beat detection.
     cut_points: Optional[List[float]] = None
+    # Trim the music track to [music_start, music_end] (seconds) before rendering.
+    music_start: Optional[float] = 0.0
+    music_end: Optional[float] = None
     music_file: Optional[str] = None  # Music track filename in resource/songs (beat-sync timeline)
     music_asset_id: Optional[str] = None  # User-uploaded music asset id; worker fetches it
     image_clip_duration: Optional[int] = 4  # Hold duration when converting an image to a clip

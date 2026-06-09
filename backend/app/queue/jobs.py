@@ -93,9 +93,25 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def _trim_audio(src_path: str, dst_path: str, start: float, end: float) -> None:
+    """Write [start, end] of src_path to dst_path as mp3."""
+    from moviepy import AudioFileClip
+
+    clip = AudioFileClip(src_path)
+    try:
+        end = min(end, clip.duration) if end else clip.duration
+        clip.subclipped(max(0.0, start), end).write_audiofile(dst_path, logger=None)
+    finally:
+        clip.close()
+
+
 def _resolve_music_asset(params: "VideoParams", user_id: str) -> None:
     """If the job references a user-uploaded music asset, fetch it into resource/songs
-    and point params.music_file at it (so the sandboxed get_bgm_file accepts it)."""
+    and point params.music_file at it (so the sandboxed get_bgm_file accepts it).
+
+    Also applies the optional trim window [music_start, music_end] and shifts any
+    user cut points into the trimmed timeline.
+    """
     asset_id = getattr(params, "music_asset_id", None)
     if not asset_id:
         return
@@ -111,12 +127,32 @@ def _resolve_music_asset(params: "VideoParams", user_id: str) -> None:
                 return
             song_dir = utils.song_dir()
             os.makedirs(song_dir, exist_ok=True)
-            local_name = f"user-{asset_id}.mp3"
-            local_path = os.path.join(song_dir, local_name)
-            if not os.path.exists(local_path):
-                get_storage().download_file(asset.storage_key, local_path)
-            params.music_file = local_name
-            logger.info(f"resolved user music asset {asset_id} -> {local_name}")
+            full_path = os.path.join(song_dir, f"user-{asset_id}.mp3")
+            if not os.path.exists(full_path):
+                get_storage().download_file(asset.storage_key, full_path)
+
+            start = float(getattr(params, "music_start", 0) or 0)
+            end = getattr(params, "music_end", None)
+            end = float(end) if end else None
+            # Trim if a non-trivial window is requested.
+            if start > 0.05 or (end is not None and end > 0):
+                tag = f"{round(start, 2)}-{round(end, 2) if end else 'end'}"
+                trimmed = os.path.join(song_dir, f"user-{asset_id}-{tag}.mp3")
+                if not os.path.exists(trimmed):
+                    _trim_audio(full_path, trimmed, start, end or 0)
+                params.music_file = os.path.basename(trimmed)
+                # Shift cut points into the trimmed timeline; drop those outside it.
+                if params.cut_points:
+                    hi = end if end else float("inf")
+                    params.cut_points = [
+                        round(cp - start, 3)
+                        for cp in params.cut_points
+                        if start < cp < hi
+                    ]
+                logger.info(f"music asset {asset_id} trimmed to [{start}, {end}] -> {params.music_file}")
+            else:
+                params.music_file = os.path.basename(full_path)
+                logger.info(f"resolved user music asset {asset_id} -> {params.music_file}")
     except Exception as e:
         logger.error(f"failed to resolve music asset {asset_id}: {e}")
 
