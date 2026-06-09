@@ -31,19 +31,30 @@ docker compose up --build
 Set `pexels_api_keys` / an LLM provider in `backend/config.toml`, and a real
 `MPT_JWT_SECRET`, before generating videos.
 
-## Run locally (without docker)
-Backend:
+## Fast local dev (recommended — no Docker rebuilds)
+
+Run only the infra in Docker (pulled images, no build); run API + worker + frontend on the
+host with hot-reload. You almost never need `docker compose build` this way.
+
 ```bash
-cd backend
-uv sync --frozen
-uv pip install '.[beatsync]'          # optional: real beat detection
-uv run python main.py                  # API on :8080
-uv run arq app.queue.worker.WorkerSettings   # worker (needs Redis + use_arq=true)
+# 1. Infra only (Postgres + Redis + MinIO) — fast, no rebuild
+./scripts/infra.sh                 # = docker compose up -d redis postgres minio
+
+# 2. Backend API (hot-reload) — reads backend/.env.dev (points at the dockerized infra)
+cd backend && uv sync && ./run-api.sh
+
+# 3. Render worker (separate terminal; restart after engine/worker code changes)
+cd backend && ./run-worker.sh
+
+# 4. Frontend (hot-reload)
+cd frontend && npm install && npm run dev    # http://localhost:3000
 ```
-Frontend:
-```bash
-cd frontend && npm install && npm run dev   # :3000
-```
+
+API on http://localhost:8080, MinIO console http://localhost:9001.
+
+**Tip:** code is volume-mounted into the Docker `api`/`worker` containers too, so even when
+using the full stack you only need `docker compose restart api worker` after code changes —
+`--build` is only needed when dependencies (requirements) change.
 
 ## Tests
 ```bash
