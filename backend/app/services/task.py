@@ -439,14 +439,19 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         f"task {task_id} finished, generated {len(final_video_paths)} videos."
     )
 
-    # 7. Cross-post to TikTok/Instagram (if enabled)
+    # 7. Cross-post to TikTok/Instagram when the job opted in and the user has creds.
     cross_post_results = []
-    if upload_post.upload_post_service.is_configured() and upload_post.upload_post_service.auto_upload:
-        logger.info("\n\n## cross-posting videos to TikTok/Instagram")
+    if getattr(params, "auto_post", False) and upload_post.upload_post_service.is_configured():
+        platforms = getattr(params, "post_platforms", None) or None
+        title = (
+            getattr(params, "post_title", None)
+            or params.video_subject
+            or "Check out this video! #shorts #viral"
+        )
+        logger.info(f"\n\n## cross-posting videos to {platforms or 'configured platforms'}")
         for video_path in final_video_paths:
             result = upload_post.cross_post_video(
-                video_path=video_path,
-                title=params.video_subject or "Check out this video! #shorts #viral"
+                video_path=video_path, title=title, platforms=platforms
             )
             cross_post_results.append(result)
             if result.get('success'):

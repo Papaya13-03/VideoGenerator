@@ -68,5 +68,8 @@ export interface CreateJobInput {
   cut_points?: number[]; // user-edited scene-change times (seconds)
   music_start?: number; // trim window start (seconds)
   music_end?: number; // trim window end (seconds); 0 = until the end
+  auto_post?: boolean; // cross-post to social after render
+  post_platforms?: string[]; // subset of ["tiktok", "instagram"]
+  post_title?: string; // caption
   video_source: "pexels" | "pixabay";
 }

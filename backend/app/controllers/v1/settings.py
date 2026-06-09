@@ -15,7 +15,7 @@ from app.utils import utils
 
 router = new_router()
 
-SUPPORTED_PROVIDERS = {"pexels", "pixabay", "llm", "tts"}
+SUPPORTED_PROVIDERS = {"pexels", "pixabay", "llm", "tts", "social"}
 # Field names treated as secrets -> masked when read back.
 _SECRET_FIELDS = ("api_key", "api_keys", "secret", "secret_key")
 

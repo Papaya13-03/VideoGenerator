@@ -87,6 +87,12 @@ def overrides_from_credentials(rows) -> dict:
                 azure_ov["speech_key"] = data["api_key"]
             if data.get("region"):
                 azure_ov["speech_region"] = data["region"]
+        elif row.provider == "social":
+            # Upload-Post credentials for auto cross-posting to TikTok/Instagram.
+            if data.get("api_key"):
+                app_ov["upload_post_api_key"] = data["api_key"]
+            if data.get("username"):
+                app_ov["upload_post_username"] = data["username"]
 
     result = {}
     if app_ov:

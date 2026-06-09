@@ -102,6 +102,11 @@ class VideoParams(BaseModel):
     # Trim the music track to [music_start, music_end] (seconds) before rendering.
     music_start: Optional[float] = 0.0
     music_end: Optional[float] = None
+
+    # Auto cross-post the finished video to social platforms (via Upload-Post).
+    auto_post: Optional[bool] = False
+    post_platforms: Optional[List[str]] = None  # subset of ["tiktok", "instagram"]
+    post_title: Optional[str] = None  # caption; defaults to the video subject
     music_file: Optional[str] = None  # Music track filename in resource/songs (beat-sync timeline)
     music_asset_id: Optional[str] = None  # User-uploaded music asset id; worker fetches it
     image_clip_duration: Optional[int] = 4  # Hold duration when converting an image to a clip

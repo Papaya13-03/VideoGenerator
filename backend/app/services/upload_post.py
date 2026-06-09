@@ -8,26 +8,35 @@ from typing import Optional
 
 import requests
 from loguru import logger
-from app.config import config
+
+from app.services.credentials import cfg
 
 
 class UploadPostService:
     """
     Service for cross-posting videos to TikTok/Instagram via Upload-Post API.
+
+    Reads credentials lazily via credentials.cfg() so each render uses the
+    *current user's* Upload-Post key (set as a per-job override by the worker).
     """
 
     API_BASE = "https://api.upload-post.com"
 
-    def __init__(self):
-        self.api_key = config.app.get("upload_post_api_key", "")
-        self.username = config.app.get("upload_post_username", "")
-        self.enabled = config.app.get("upload_post_enabled", False)
-        self.platforms = config.app.get("upload_post_platforms", ["tiktok", "instagram"])
-        self.auto_upload = config.app.get("upload_post_auto_upload", False)
+    @property
+    def api_key(self) -> str:
+        return cfg("upload_post_api_key", "")
+
+    @property
+    def username(self) -> str:
+        return cfg("upload_post_username", "")
+
+    @property
+    def platforms(self) -> list:
+        return cfg("upload_post_platforms", ["tiktok", "instagram"])
 
     def is_configured(self) -> bool:
-        """Check if Upload-Post is properly configured."""
-        return bool(self.api_key and self.username and self.enabled)
+        """Configured when the current user has an Upload-Post key + username."""
+        return bool(self.api_key and self.username)
 
     def upload_video(
         self,

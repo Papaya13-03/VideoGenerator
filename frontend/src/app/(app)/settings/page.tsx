@@ -75,6 +75,16 @@ const PROVIDERS: ProviderDef[] = [
       { name: "region", label: "Azure region" },
     ],
   },
+  {
+    id: "social",
+    title: "Social auto-post (Upload-Post)",
+    hint: "Auto-post finished videos to TikTok / Instagram via Upload-Post.",
+    keyUrl: "https://app.upload-post.com",
+    fields: [
+      { name: "api_key", label: "Upload-Post API key" },
+      { name: "username", label: "Upload-Post username" },
+    ],
+  },
 ];
 
 function ProviderCard({

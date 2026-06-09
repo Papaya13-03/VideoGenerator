@@ -44,8 +44,19 @@ export default function ComposerPage() {
     cut_points: [],
     music_start: 0,
     music_end: 0,
+    auto_post: false,
+    post_platforms: ["tiktok", "instagram"],
+    post_title: "",
     video_source: "pexels",
   });
+
+  function togglePlatform(p: string) {
+    setForm((f) => {
+      const cur = f.post_platforms ?? [];
+      const next = cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p];
+      return { ...f, post_platforms: next };
+    });
+  }
 
   async function onUploadMusic(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -327,6 +338,47 @@ export default function ComposerPage() {
         <p className="text-xs text-neutral-500">
           Off = music-only montage. On = narrate the script over the clips.
         </p>
+      </div>
+
+      {/* 6. Auto-post to social */}
+      <div className={card}>
+        <label className="flex items-center justify-between">
+          <span className={labelCls}>📲 Auto-post to social</span>
+          <input
+            type="checkbox"
+            checked={form.auto_post}
+            onChange={(e) => set("auto_post", e.target.checked)}
+          />
+        </label>
+        {form.auto_post && (
+          <div className="space-y-2">
+            <div className="flex gap-4">
+              {["tiktok", "instagram"].map((p) => (
+                <label key={p} className="flex items-center gap-2 text-sm capitalize">
+                  <input
+                    type="checkbox"
+                    checked={(form.post_platforms ?? []).includes(p)}
+                    onChange={() => togglePlatform(p)}
+                  />
+                  {p}
+                </label>
+              ))}
+            </div>
+            <input
+              value={form.post_title}
+              onChange={(e) => set("post_title", e.target.value)}
+              placeholder="Caption (optional, defaults to the keyword)"
+              className={inputCls}
+            />
+            <p className="text-xs text-neutral-500">
+              Requires your Upload-Post key in{" "}
+              <a href="/settings" className="text-indigo-400 hover:underline">
+                Settings
+              </a>
+              .
+            </p>
+          </div>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
