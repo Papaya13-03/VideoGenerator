@@ -80,6 +80,13 @@ def shutdown_event():
 @app.on_event("startup")
 def startup_event():
     logger.info("startup event")
+    # Log effective runtime config so an API/worker mismatch is obvious.
+    try:
+        from app.queue.worker import _runtime_summary
+
+        logger.info(f"API runtime | {_runtime_summary()}")
+    except Exception:
+        pass
     # Ensure DB tables exist (dev convenience; production also runs Alembic migrations).
     try:
         from app.db.session import init_db
