@@ -70,7 +70,7 @@ def search_videos_pexels(
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     }
     # Build URL
-    params = {"query": search_term, "per_page": 20, "orientation": video_orientation}
+    params = {"query": search_term, "per_page": 40, "orientation": video_orientation}
     query_url = f"https://api.pexels.com/videos/search?{urlencode(params)}"
     logger.info(f"searching videos: {query_url}, with proxies: {config.proxy}")
 
@@ -182,7 +182,7 @@ def search_images_pexels(
         "Authorization": api_key,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     }
-    params = {"query": search_term, "per_page": 30, "orientation": video_orientation}
+    params = {"query": search_term, "per_page": 50, "orientation": video_orientation}
     query_url = f"https://api.pexels.com/v1/search?{urlencode(params)}"
     logger.info(f"searching images: {query_url}, with proxies: {config.proxy}")
 
@@ -467,11 +467,18 @@ def download_materials(
     max_clip_duration: int = 5,
     image_clip_duration: int = 4,
     convert_images_to_clips: bool = True,
+    min_count: int = 0,
+    max_materials: int = 0,
 ) -> List[str]:
     """Search + download a mix of VIDEOS and IMAGES by keyword; return ready-to-use local paths.
 
     When convert_images_to_clips=True, images are turned into .mp4 clips (Ken-Burns zoom)
     so the caller sees a uniform list of .mp4 files.
+
+    Stops once total duration covers audio_duration AND at least `min_count` unique clips
+    are downloaded — beat-sync uses one clip per (short) segment, so it needs a clip *count*,
+    not just total duration, to avoid repeating the same clips. Never exceeds `max_materials`
+    (0 = no extra cap) to bound API cost / bandwidth.
     """
     material_types = [t for t in material_types] or ["video"]
     search_video = search_videos_pixabay if source == "pixabay" else search_videos_pexels
@@ -541,9 +548,17 @@ def download_materials(
                 logger.info(f"material saved: {saved_path}")
                 material_paths.append(saved_path)
                 total_duration += seconds
-                if total_duration > audio_duration:
+                if max_materials and len(material_paths) >= max_materials:
                     logger.info(
-                        f"total duration of downloaded materials: {total_duration}s, skip downloading more"
+                        f"reached max_materials={max_materials}, stop downloading "
+                        f"(some clips may repeat for very long videos)"
+                    )
+                    break
+                # Need both enough duration AND enough distinct clips (for beat-sync segments).
+                if total_duration > audio_duration and len(material_paths) >= min_count:
+                    logger.info(
+                        f"downloaded {len(material_paths)} clips covering {total_duration}s, "
+                        f"skip downloading more"
                     )
                     break
         except Exception as e:

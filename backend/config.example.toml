@@ -270,6 +270,10 @@ max_concurrent_tasks = 5
 # 并发任务已满后的最大排队任务数，超过后接口返回 429，避免匿名请求无限堆积
 max_queued_tasks = 100
 
+# Max distinct clips/images downloaded per render. Higher = less repetition in long
+# beat-sync videos, but more API calls / bandwidth / render time.
+max_materials = 60
+
 
 [storage]
 # Where outputs are stored (final video, combined, audio...).

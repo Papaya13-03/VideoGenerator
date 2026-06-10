@@ -213,8 +213,22 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
         # Use download_materials (mixed image+video) when images or beat-sync are needed;
         # otherwise keep the original download_videos for the video-only path.
         if beat_sync or "image" in material_types:
+            total_duration = audio_duration * params.video_count
+            # Beat-sync uses one clip per (short) segment, so fetch enough DISTINCT clips
+            # to cover the number of segments — otherwise long videos repeat the same clips.
+            min_count = 0
+            if beat_sync:
+                cut_points = getattr(params, "cut_points", None)
+                if cut_points:
+                    min_count = (len(cut_points) + 1) * params.video_count
+                else:
+                    # Unknown until beat detection; estimate ~2.5s per segment.
+                    min_count = int(math.ceil(total_duration / 2.5))
+            max_materials = int(config.app.get("max_materials", 60))
+            min_count = min(min_count, max_materials)
             logger.info(
-                f"\n\n## downloading materials ({material_types}) from {params.video_source}"
+                f"\n\n## downloading materials ({material_types}) from {params.video_source} "
+                f"(min_count={min_count}, max={max_materials})"
             )
             downloaded_videos = material.download_materials(
                 task_id=task_id,
@@ -223,9 +237,11 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
                 material_types=material_types,
                 video_aspect=params.video_aspect,
                 video_contact_mode=params.video_concat_mode,
-                audio_duration=audio_duration * params.video_count,
+                audio_duration=total_duration,
                 max_clip_duration=params.video_clip_duration,
                 image_clip_duration=getattr(params, "image_clip_duration", 4),
+                min_count=min_count,
+                max_materials=max_materials,
             )
         else:
             logger.info(f"\n\n## downloading videos from {params.video_source}")
