@@ -119,3 +119,40 @@ def test_jobs_are_isolated_per_user(client):
 def test_jobs_require_auth(client):
     assert client.post("/api/v1/jobs", json={"video_subject": "x"}).status_code == 401
     assert client.get("/api/v1/jobs").status_code == 401
+
+
+def test_job_urls_come_from_assets_not_redis(tmp_path):
+    # Library must build URLs from persisted Asset rows (fresh-signed), so completed jobs
+    # show even without any Redis state and links never expire.
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.controllers.v1.jobs import _job_to_dict
+    from app.db.models import Asset, Job, User
+
+    eng = create_engine(
+        f"sqlite:///{tmp_path / 't.db'}", connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(User(id="u1", email="x@y.com", password_hash="h"))
+    db.add(Job(id="j1", user_id="u1", status="complete", params={}))
+    db.add(
+        Asset(
+            id="a1",
+            user_id="u1",
+            job_id="j1",
+            kind="final_video",
+            storage_key="users/u1/tasks/j1/final-1.mp4",
+            url="stale-expired-url",
+            size_bytes=1,
+        )
+    )
+    db.commit()
+    job = db.get(Job, "j1")
+    data = _job_to_dict(job, db)
+    db.close()
+    assert data["storage_urls"]["videos"], data
+    # URL is derived from storage_key, not the stale stored url.
+    assert "final-1.mp4" in data["storage_urls"]["videos"][0]
+    assert "stale-expired-url" not in data["storage_urls"]["videos"][0]

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
 from app.controllers.v1.base import new_router
-from app.db.models import Job, User
+from app.db.models import Asset, Job, User
 from app.db.session import get_db
 from app.models.exception import HttpException
 from app.models.schema import TaskVideoRequest
@@ -15,7 +15,11 @@ from app.utils import utils
 router = new_router()
 
 
-def _job_to_dict(job: Job) -> dict:
+# Presigned URLs are signed fresh on every read (1 day) so they never serve an expired link.
+_URL_TTL = 86400
+
+
+def _job_to_dict(job: Job, db: Session) -> dict:
     data = {
         "id": job.id,
         "status": job.status,
@@ -26,13 +30,33 @@ def _job_to_dict(job: Job) -> dict:
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
     }
-    # Merge live progress/results from the render state (Redis) keyed by task_id.
+    # Build result URLs from the *persisted* Asset rows (storage_key is permanent), signing
+    # them fresh here. This avoids the two bugs of reading URLs from ephemeral Redis state:
+    # expired presigned links, and missing entries after a restart (only newest job showed).
+    assets = (
+        db.query(Asset)
+        .filter(Asset.job_id == job.id, Asset.kind.in_(["final_video", "combined_video"]))
+        .order_by(Asset.created_at.asc())
+        .all()
+    )
+    if assets:
+        from app.storage import get_storage
+
+        storage = get_storage()
+        urls = {"videos": [], "combined_videos": []}
+        for a in assets:
+            field = "videos" if a.kind == "final_video" else "combined_videos"
+            try:
+                urls[field].append(storage.url_for(a.storage_key, expires=_URL_TTL))
+            except Exception:
+                pass
+        if urls["videos"] or urls["combined_videos"]:
+            data["storage_urls"] = urls
+
+    # Live progress for in-flight jobs (Redis), only while not yet complete.
     live = sm.state.get_task(job.id)
-    if live:
-        if live.get("progress") is not None and job.status != "complete":
-            data["progress"] = live.get("progress")
-        if live.get("storage_urls"):
-            data["storage_urls"] = live.get("storage_urls")
+    if live and live.get("progress") is not None and job.status != "complete":
+        data["progress"] = live.get("progress")
     return data
 
 
@@ -72,7 +96,7 @@ def list_jobs(
     return utils.get_response(
         200,
         {
-            "jobs": [_job_to_dict(j) for j in jobs],
+            "jobs": [_job_to_dict(j, db) for j in jobs],
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -97,7 +121,7 @@ def get_job(
     db: Session = Depends(get_db),
 ):
     job = _get_owned_job(db, current_user, job_id)
-    return utils.get_response(200, _job_to_dict(job))
+    return utils.get_response(200, _job_to_dict(job, db))
 
 
 @router.delete("/jobs/{job_id}", summary="Delete a job")
