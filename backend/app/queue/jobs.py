@@ -81,6 +81,12 @@ def _update_job(task_id: str, **fields) -> None:
         with SessionLocal() as db:
             job = db.get(Job, task_id)
             if job is None:
+                # The API created this job; if the worker can't see it, the two are
+                # using DIFFERENT databases (check MPT_DATABASE_URL matches the API's).
+                logger.warning(
+                    f"job {task_id} not found in worker DB — API and worker may use "
+                    f"different databases (MPT_DATABASE_URL mismatch); status won't update"
+                )
                 return
             for k, v in fields.items():
                 setattr(job, k, v)

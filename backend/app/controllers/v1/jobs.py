@@ -60,10 +60,26 @@ def _job_to_dict(job: Job, db: Session) -> dict:
         if urls["videos"] or urls["combined_videos"]:
             data["storage_urls"] = urls
 
-    # Live progress for in-flight jobs (Redis), only while not yet complete.
+    # Self-heal from the shared render state (Redis): the engine always writes its
+    # real state/progress there, even if the worker couldn't update the Job row (e.g.
+    # worker and API briefly pointed at different DBs). This keeps the UI truthful.
     live = sm.state.get_task(job.id)
-    if live and live.get("progress") is not None and job.status != "complete":
-        data["progress"] = live.get("progress")
+    if live:
+        state = live.get("state")
+        progress = live.get("progress") or 0
+        if state == 1:  # COMPLETE
+            data["status"] = "complete"
+            data["progress"] = 100
+        elif state == -1 and job.status != "complete":  # FAILED
+            data["status"] = "failed"
+        elif progress > 0 and job.status in ("queued", "processing"):
+            # Actively rendering (progress reported) — surface it even if the DB row
+            # is still "queued" (e.g. the worker couldn't update it).
+            data["status"] = "processing"
+            data["progress"] = progress
+        # Fall back to URLs recorded in state if assets weren't persisted to this DB.
+        if "storage_urls" not in data and live.get("storage_urls"):
+            data["storage_urls"] = live.get("storage_urls")
     return data
 
 
