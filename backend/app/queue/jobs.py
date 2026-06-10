@@ -194,7 +194,16 @@ async def render_job(ctx, task_id: str, params_dict: dict, stop_at: str = "video
 
     if result and stop_at == "video":
         await loop.run_in_executor(None, lambda: _upload_outputs(task_id, user_id, result))
-        _update_job(task_id, status="complete", progress=100, finished_at=_now())
+        import json as _json
+
+        social = result.get("cross_post_results")
+        _update_job(
+            task_id,
+            status="complete",
+            progress=100,
+            finished_at=_now(),
+            social_results=_json.dumps(social) if social else "",
+        )
     elif result:
         _update_job(task_id, status="complete", progress=100, finished_at=_now())
     else:

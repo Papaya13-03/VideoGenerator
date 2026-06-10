@@ -99,6 +99,19 @@ export default function JobDetailPage() {
         </p>
       )}
 
+      {job.social_results && job.social_results.length > 0 && (
+        <div className="space-y-1 rounded-md border border-neutral-800 bg-neutral-900 p-3 text-sm">
+          <p className="font-medium text-neutral-300">📲 Social posting</p>
+          {job.social_results.map((r, i) => (
+            <p key={i} className={r.success ? "text-emerald-400" : "text-red-400"}>
+              {r.success
+                ? `✓ Posted${r.request_id ? ` (id ${r.request_id})` : ""}`
+                : `✗ ${r.error || "Post failed"}`}
+            </p>
+          ))}
+        </div>
+      )}
+
       <button
         onClick={remove}
         className="text-sm text-red-400 hover:text-red-300"

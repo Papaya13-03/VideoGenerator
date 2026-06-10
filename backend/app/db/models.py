@@ -44,6 +44,8 @@ class Job(Base):
     stage: Mapped[str] = mapped_column(String(32), default="", nullable=False)
     params: Mapped[dict] = mapped_column(JSON, default=dict)
     error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # JSON string of social cross-post results (Upload-Post responses), if any.
+    social_results: Mapped[str] = mapped_column(Text, default="", nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

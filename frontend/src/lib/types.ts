@@ -21,6 +21,12 @@ export interface Job {
   created_at: string | null;
   finished_at: string | null;
   storage_urls?: { videos: string[]; combined_videos: string[] };
+  social_results?: Array<{
+    success?: boolean;
+    request_id?: string;
+    error?: string;
+    [k: string]: unknown;
+  }>;
 }
 
 export interface JobList {

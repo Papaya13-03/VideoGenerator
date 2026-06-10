@@ -35,6 +35,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, clas
 # (Production should use Alembic migrations; this keeps dev DBs from drifting.)
 _ENSURE_COLUMNS = [
     ("assets", "name", "VARCHAR(255) NOT NULL DEFAULT ''"),
+    ("jobs", "social_results", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 

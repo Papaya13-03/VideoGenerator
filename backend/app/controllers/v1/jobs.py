@@ -30,6 +30,13 @@ def _job_to_dict(job: Job, db: Session) -> dict:
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
     }
+    if getattr(job, "social_results", ""):
+        import json
+
+        try:
+            data["social_results"] = json.loads(job.social_results)
+        except Exception:
+            pass
     # Build result URLs from the *persisted* Asset rows (storage_key is permanent), signing
     # them fresh here. This avoids the two bugs of reading URLs from ephemeral Redis state:
     # expired presigned links, and missing entries after a restart (only newest job showed).
