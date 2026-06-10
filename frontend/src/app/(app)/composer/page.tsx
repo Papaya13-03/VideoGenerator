@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -57,6 +57,38 @@ export default function ComposerPage() {
       return { ...f, post_platforms: next };
     });
   }
+
+  // Persist the composer across tab navigation / reloads (App Router unmounts the page).
+  const [hydrated, setHydrated] = useState(false);
+  const STORAGE_KEY = "vg_composer";
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.form) setForm((f) => ({ ...f, ...s.form }));
+        if (typeof s.script === "string") setScript(s.script);
+        if (typeof s.terms === "string") setTerms(s.terms);
+        if (typeof s.scriptPrompt === "string") setScriptPrompt(s.scriptPrompt);
+      }
+    } catch {
+      /* ignore corrupt state */
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ form, script, terms, scriptPrompt }),
+      );
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [hydrated, form, script, terms, scriptPrompt]);
 
   async function onUploadMusic(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
