@@ -65,6 +65,8 @@ class Asset(Base):
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
     url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    # For music assets: saved beat editor config (cut_points + trim) as a JSON string.
+    beat_config: Mapped[str] = mapped_column(Text, default="", nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     job: Mapped["Job"] = relationship(back_populates="assets")

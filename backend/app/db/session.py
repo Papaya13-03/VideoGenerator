@@ -36,6 +36,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, clas
 _ENSURE_COLUMNS = [
     ("assets", "name", "VARCHAR(255) NOT NULL DEFAULT ''"),
     ("jobs", "social_results", "TEXT NOT NULL DEFAULT ''"),
+    ("assets", "beat_config", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 

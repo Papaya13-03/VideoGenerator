@@ -160,6 +160,20 @@ export const api = {
     request<{ data: BeatAnalysis }>(
       `/assets/music/${assetId}/beats?beats_per_segment=${beatsPerSegment}`,
     ).then((b) => unwrap(b)),
+
+  saveBeats: (
+    assetId: string,
+    payload: {
+      cut_points: number[];
+      music_start: number;
+      music_end: number;
+      beats_per_segment: number;
+    },
+  ) =>
+    request<{ data: unknown }>(`/assets/music/${assetId}/beats`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
 };
 
 export { ApiError };

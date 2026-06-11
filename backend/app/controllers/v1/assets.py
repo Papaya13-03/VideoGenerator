@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-from fastapi import Depends, File, Path, Query, UploadFile
+from fastapi import Body, Depends, File, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -88,6 +88,13 @@ async def upload_music(
     return utils.get_response(200, _asset_dict(asset))
 
 
+def _owned_music(db, user, asset_id):
+    asset = db.get(Asset, asset_id)
+    if asset is None or asset.user_id != user.id or asset.kind != "music":
+        raise HttpException(task_id=asset_id, status_code=404, message="music not found")
+    return asset
+
+
 @router.get("/assets/music/{asset_id}/beats", summary="Analyze a track's beats / cut points")
 def analyze_music_beats(
     asset_id: str = Path(...),
@@ -95,9 +102,9 @@ def analyze_music_beats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    asset = db.get(Asset, asset_id)
-    if asset is None or asset.user_id != current_user.id or asset.kind != "music":
-        raise HttpException(task_id=asset_id, status_code=404, message="music not found")
+    import json
+
+    asset = _owned_music(db, current_user, asset_id)
 
     from app.services import audio_analysis
 
@@ -113,7 +120,36 @@ def analyze_music_beats(
             os.remove(tmp.name)
         except OSError:
             pass
+
+    # Include the user's previously saved beat config (cut points + trim), if any.
+    result["saved"] = None
+    if asset.beat_config:
+        try:
+            result["saved"] = json.loads(asset.beat_config)
+        except Exception:
+            pass
     return utils.get_response(200, result)
+
+
+@router.put("/assets/music/{asset_id}/beats", summary="Save the edited beats / trim for a track")
+def save_music_beats(
+    asset_id: str = Path(...),
+    body: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    import json
+
+    asset = _owned_music(db, current_user, asset_id)
+    config = {
+        "cut_points": [float(c) for c in (body.get("cut_points") or [])],
+        "music_start": float(body.get("music_start") or 0),
+        "music_end": float(body.get("music_end") or 0),
+        "beats_per_segment": int(body.get("beats_per_segment") or 4),
+    }
+    asset.beat_config = json.dumps(config)
+    db.commit()
+    return utils.get_response(200, {"id": asset_id, "saved": config})
 
 
 @router.delete("/assets/{asset_id}", summary="Delete an uploaded asset")

@@ -43,6 +43,9 @@ export function BeatEditor({
 
   const effEnd = trimEnd && trimEnd > 0 ? trimEnd : duration;
 
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+
   const analyze = useCallback(
     async (apply: boolean) => {
       setLoading(true);
@@ -51,7 +54,13 @@ export function BeatEditor({
         setDuration(r.duration);
         setBeats(r.beats);
         setTempo(r.tempo);
-        if (apply || cutPoints.length === 0) onChange(r.cut_points);
+        // Prefer the user's saved beats/trim for this track; else use detected.
+        if (r.saved && !apply) {
+          onChange(r.saved.cut_points || []);
+          onTrimChange(r.saved.music_start || 0, r.saved.music_end || 0);
+        } else if (apply || cutPoints.length === 0) {
+          onChange(r.cut_points);
+        }
       } finally {
         setLoading(false);
       }
@@ -59,6 +68,35 @@ export function BeatEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [assetId, beatsPerSegment],
   );
+
+  // Tap a beat at the current playback position (tap along while listening).
+  function tapBeat() {
+    const a = audioRef.current;
+    if (!a) return;
+    const t = Math.round(a.currentTime * 1000) / 1000;
+    if (t <= 0 || (duration && t >= duration)) return;
+    // Ignore taps within 80ms of an existing cut.
+    if (cutPoints.some((c) => Math.abs(c - t) < 0.08)) return;
+    onChange([...cutPoints, t].sort((x, y) => x - y));
+  }
+
+  async function save() {
+    setSaving(true);
+    setSavedMsg("");
+    try {
+      await api.saveBeats(assetId, {
+        cut_points: cutPoints,
+        music_start: trimStart,
+        music_end: trimEnd,
+        beats_per_segment: beatsPerSegment,
+      });
+      setSavedMsg("Saved ✓");
+    } catch {
+      setSavedMsg("Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // Auto-analyze when the track changes.
   useEffect(() => {
@@ -146,6 +184,36 @@ export function BeatEditor({
         }}
         onTimeUpdate={(e) => setPlayhead(e.currentTarget.currentTime)}
       />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={tapBeat}
+          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium hover:bg-indigo-500"
+        >
+          🥁 Tap beat
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="rounded-md border border-neutral-600 px-3 py-1.5 text-sm hover:border-neutral-400"
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded-md border border-emerald-600 bg-emerald-600/20 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-50"
+        >
+          💾 Save beats to track
+        </button>
+        {savedMsg && <span className="text-xs text-neutral-400">{savedMsg}</span>}
+      </div>
+      <p className="text-[11px] text-neutral-500">
+        Play the track and press <b>Tap beat</b> on each beat — markers are added at the
+        playhead. <b>Save</b> remembers them for this track next time.
+      </p>
 
       {/* Timeline: click empty to add a cut, drag a marker to move, × to delete. */}
       <div

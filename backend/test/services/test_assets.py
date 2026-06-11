@@ -88,6 +88,36 @@ def test_analyze_beats(client, monkeypatch):
     assert data["used_beats"] is True
 
 
+def test_save_and_load_beats(client, monkeypatch):
+    t = _token(client, "save@e.com")
+    files = {"file": ("s.mp3", b"x", "audio/mpeg")}
+    aid = client.post("/api/v1/assets/music", headers=_auth(t), files=files).json()["data"]["id"]
+
+    # Save edited beats + trim.
+    r = client.put(
+        f"/api/v1/assets/music/{aid}/beats",
+        headers=_auth(t),
+        json={"cut_points": [2.0, 4.0], "music_start": 1.0, "music_end": 10.0, "beats_per_segment": 8},
+    )
+    assert r.status_code == 200, r.text
+
+    # GET returns the saved config alongside analysis.
+    from app.services import audio_analysis
+
+    monkeypatch.setattr(
+        audio_analysis,
+        "analyze_music",
+        lambda path, beats_per_segment=4: {
+            "duration": 12.0, "tempo": 100.0, "beats": [], "cut_points": [3.0], "used_beats": True
+        },
+    )
+    g = client.get(f"/api/v1/assets/music/{aid}/beats", headers=_auth(t)).json()["data"]
+    assert g["saved"]["cut_points"] == [2.0, 4.0]
+    assert g["saved"]["music_start"] == 1.0
+    assert g["saved"]["music_end"] == 10.0
+    assert g["saved"]["beats_per_segment"] == 8
+
+
 def test_analyze_beats_other_user_404(client):
     ta = _token(client, "o1@e.com")
     tb = _token(client, "o2@e.com")

@@ -48,12 +48,20 @@ export interface MusicAsset {
   kind: string;
 }
 
+export interface SavedBeatConfig {
+  cut_points: number[];
+  music_start: number;
+  music_end: number;
+  beats_per_segment: number;
+}
+
 export interface BeatAnalysis {
   duration: number;
   tempo: number;
   beats: number[];
   cut_points: number[];
   used_beats: boolean;
+  saved?: SavedBeatConfig | null;
 }
 
 // Maps 1:1 to the backend VideoParams subset the composer exposes.
